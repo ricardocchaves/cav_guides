@@ -34,7 +34,7 @@ def show(file):
 		# Image
 		cv.namedWindow(file,cv.WINDOW_NORMAL)
 		cv.imshow(file,img)
-		#cv.waitKey()
+		cv.waitKey()
 	else:
 		# Video
 		cap = cv.VideoCapture(file)
@@ -288,7 +288,7 @@ def entropyThread(img,pixel_val,ret_count,ret_entropy):
 	ret_count[pixel_val] = count
 	ret_entropy[pixel_val] = entropy
 
-def getEntropy(file,order=0):
+def getEntropy_thr(file,order=0):
 	img = cv.imread(file)
 	img = cv.cvtColor(img,cv.COLOR_BGR2GRAY)
 
@@ -394,7 +394,7 @@ def main():
 	#snr = SNR(noisy('s&p',cv.imread(src)),cv.imread(src))
 	#snr = SNR(quantize(src,1),cv.imread(src))
 	#print(snr)
-	#print(getEntropy(src,1))
+	#print(getEntropy_thr(src,1))
 	getEntropy_nonThread(src)
 	#cv.waitKey(4000000)
 

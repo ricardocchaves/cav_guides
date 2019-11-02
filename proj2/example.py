@@ -33,5 +33,10 @@ def testingBitstring():
     print(b+b)
     print(a+(b+b))
 
+    val = 12
+    s = BitArray(hex(val))
+    print(s.bin)
+    s.set('1',-1) 
+    print(s.bin)
 if __name__ == "__main__":
     testingBitstring()

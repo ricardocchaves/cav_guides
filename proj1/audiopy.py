@@ -129,7 +129,10 @@ def SNR_MAE(fileNameOriginal, fileNameCopy):
 	    sumOriginal += sampleVal * sampleVal
 	    sumCopy += sampleCopyVal * sampleCopyVal
 
-	snr = 10 * math.log10(sumOriginal / (sumOriginal - sumCopy))
+	if (sumOriginal - sumCopy) == 0:
+		return 0,mAE
+	else:
+		snr = 10 * math.log10(sumOriginal / (sumOriginal - sumCopy))
 
 	copy.close()
 	original.close()

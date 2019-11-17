@@ -69,14 +69,15 @@ def map_symbols( sample_probability ):
     sorted_samples = sorted(sample_probability.items(), key=operator.itemgetter(1), reverse=True)
     #sample from most likely to least
 
-    transformed = {}
-    symbol_mapping = {}
+    valueToSymbol = {}
+    symbolToValue = {}
     i = 0
     for k in sorted_samples:
-        symbol_mapping.update({i: k})
+        symbolToValue.update({i: k})
+        valueToSymbol.update({k[0]: i})
         i += 1
 
-    return symbol_mapping
+    return symbolToValue,valueToSymbol
 
 def findBestGolomb(symbol_mapping, show):
     x = [k for k in symbol_mapping.keys()]
@@ -111,17 +112,21 @@ def main():
         print("USAGE: python3 {} sound_file.wav show".format(sys.argv[0]))
         return
     fname = sys.argv[1]
-    show = sys.argv[2]
+    show = int(sys.argv[2])
 
 #1 #Read Samples from file
     samples, diff_samples = readWavFile(fname)
+    leftSamples = [l for (l,r) in diff_samples]
+    rightSamples = [r for (l,r) in diff_samples]
     #print(samples)
 
 
 #2 #Calculate probabilty of each sample value after predictor is applyed
-    sample_probability = prob([r for (l,r) in diff_samples])
+    sample_probability_right = prob([r for (l,r) in diff_samples])
+    sample_probability_left = prob([l for (l,r) in diff_samples])
 
     #show sample values' probability distribution after predictor is applyed
+    """
     if(show):
         plt.figure(figsize=(7, 5))
         plt.plot( [k for k in sample_probability.keys()], [sample_probability.get(k) for k in sample_probability.keys()], 'ro', markersize=0.5)
@@ -129,65 +134,50 @@ def main():
         plt.rcParams['agg.path.chunksize'] = 10000
         #plt.axis([1,len(samples)+1, -2**15, 2**15])
         plt.show(block = False)
-
+    """
     
 #3 #Map symbols to sample values accourding to probability
     #{ symbol: (value, probability)}
-    symbol_mapping = map_symbols(sample_probability)
+    left_symbolToValue, left_valueToSymbol  = map_symbols(sample_probability_left)
+    right_symbolToValue, right_valueToSymbol = map_symbols(sample_probability_right)
 
     #show choosen symbols' probability distribution 
+    """
     if(show):
         plt.figure(figsize=(7, 5))
         plt.plot( [s for s in symbol_mapping.keys()], [symbol_mapping.get(s)[1] for s in symbol_mapping.keys()], 'ro', markersize=0.5)
         plt.ylabel('probability')
         #plt.axis([1,len(samples)+1, -2**15, 2**15])
         plt.show(block = False)
+    """
     
 #4 #Find best Golomb Parameters
-    alpha, m_param = findBestGolomb(symbol_mapping,show)
-    print("Found Parameters: \n Alpha: {}, \n M: {} ".format(alpha,m_param))
+    alpha_left, m_left = findBestGolomb(left_symbolToValue,show)
+    alpha_right, m_right = findBestGolomb(right_symbolToValue,show)
+    print("Found Parameters: \n Alpha: {}, \n M: {} ".format(alpha_left,m_left))
+    print("Found Parameters: \n Alpha: {}, \n M: {} ".format(alpha_right,m_right))
 
 #5 #Encode as Golomb
     #TODO
+    symbolsLeft = {}
+    symbolsRight = {}
+    # Removing probabilities from symbolToValue map. valueToSymbol already doesn't have them.
+    for k in left_symbolToValue:
+        symbolsLeft.update({k:left_symbolToValue[k][0]})
+    for k in right_symbolToValue:
+        symbolsRight.update({k:right_symbolToValue[k][0]})
+
+    import codec
+    
+    sound = wave.open(fname, "r")
+    n_channels = sound.getnchannels()
+    samp_width = sound.getsampwidth()
+    framerate = sound.getframerate()
+
+    codec.encode(fname+"_encoded",leftSamples,rightSamples,symbolsLeft, left_valueToSymbol,symbolsRight, right_valueToSymbol, m_left, m_right, n_channels, samp_width, framerate)
 
     if show:
         input("Press enter to exit")
-
-    
-
-    
-
-    # #Golomb pattern
-    # plt.figure(figsize=(7, 5))
-    # plt.plot( [x for x in range(0, 100)], [golomb_pattern(x,0.5) for x in range(0,100)], 'ro', markersize=0.5)
-    # plt.ylabel('probability')
-    # plt.rcParams['agg.path.chunksize'] = 10000
-    # #plt.axis([1,len(samples)+1, -2**15, 2**15])
-    # plt.show(block = True)
-
-    
-    '''
-    plt.figure(figsize=(10, 10))
-    plt.plot( [ s+1 for s in range(0,len(samples))], [r for (l,r) in samples])
-    plt.ylabel('some numbers')
-    plt.rcParams['agg.path.chunksize'] = 10000
-    plt.axis([1,len(samples)+1, -2**15, 2**15])
-    plt.show(block = False)
-
-    plt.figure(figsize=(10, 10))
-    x = [r for (l,r) in diff_samples]
-    plt.hist(x, density=True)
-    plt.ylabel('Probability')
-    plt.show(block = False)
-    
-    plt.figure(figsize=(10, 10))
-    plt.plot( [ s+1 for s in range(0,len(diff_samples))], [r for (l,r) in diff_samples])
-    plt.rcParams['agg.path.chunksize'] = 10000
-    #plt.axis([1,len(samples)+1, -2**15, 2**15])
-    plt.show()
-    '''
-    
-
 
 if __name__ == "__main__":
     main()

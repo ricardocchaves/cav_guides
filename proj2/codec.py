@@ -6,6 +6,185 @@ from tqdm import tqdm
 from bitstring import BitArray
 import math
 
+### Golomb encoding function
+# outFname - name of the output encoded fiel
+# [left|right]Samples - lists of samples, eg: [3342,-2213,98,1233,...]
+# [left|right]_symbolToValue - dictionary mapping symbols to values, eg: {0:-223,1:930,2:9352,...}
+# [left|right]_valueToSymbol - dictionary mapping values to symbols, eg: {-223:0,930:1,9352:2,...}
+# m_[left|right] - m value of each channel. To be used in the Golomb encoding
+# n_channels, samp_width, framerate - attributes of the WAVE file
+def encode(outFname,leftSamples,rightSamples,left_symbolToValue,
+    left_valueToSymbol,right_symbolToValue, right_valueToSymbol, m_left, m_right,
+    n_channels, samp_width, framerate):
+
+    buffer = BitArray()
+
+    c_left = int(math.ceil(math.log(m_left,2)))
+    div_left = int(math.pow(2,c_left) - m_left)
+    c_right = int(math.ceil(math.log(m_right,2)))
+    div_right = int(math.pow(2,c_right) - m_right)
+    
+    print("Golomb encoding {} left samples, {} right samples.".format(len(leftSamples),len(rightSamples)))
+    # assuming the number of samples on both channels is equal
+    for i in tqdm(range(len(leftSamples))):
+        leftSample = leftSamples[i]
+        rightSample = rightSamples[i]
+
+        leftSample = left_valueToSymbol[leftSample]
+        rightSample = right_valueToSymbol[rightSample]
+
+        valLeft = Golomb.to_golomb(leftSample,m_left,c_left,div_left)
+        valRight = Golomb.to_golomb(rightSample,m_right,c_right,div_right)
+
+        buffer += BitArray(bin=valLeft) + BitArray(bin=valRight)
+
+    print("Done. Writing file...")
+    # Write new file
+    out = wave.open(outFname, "w")
+    out.setnchannels(n_channels)
+    out.setsampwidth(samp_width)
+    out.setframerate(framerate)
+
+    # Adding headers
+    header = {"left_symbolToValue":left_symbolToValue,"right_symbolToValue":right_symbolToValue,
+    "m_left":m_left,"m_right":m_right}
+
+    from pickle import dumps
+    header = dumps(header) # bytes
+    header_size = len(header)
+
+    out.writeframesraw(struct.pack('<i',header_size))
+    out.writeframesraw(header)
+
+    print("Wrote header with size {} bytes.".format(header_size))
+
+    # Writing data
+    out.writeframesraw(buffer.tobytes())
+    out.close()
+    print("File written.")
+
+### Golomb decoding function
+### Opens the file fname, gets the headers required for the decoding process and writes the
+### decoded WAVE file to outFname
+def decode(fname, outFname):
+    sound = wave.open(fname, "rb")
+
+    # File attributes
+    n_channels = sound.getnchannels()
+    samp_width = sound.getsampwidth()
+    framerate = sound.getframerate()
+
+    outSamples = BitArray()
+
+    print("Starting Golomb decoding.")
+    # Get header information
+    from pickle import loads
+    header_size = struct.unpack('<i',sound.readframes(1))[0]
+    header_serialized = sound.readframes(header_size)
+    header = loads(header_serialized)
+    left_m = header['m_left']
+    right_m = header['m_right']
+    left_symbolToValue = header['left_symbolToValue']
+    right_symbolToValue = header['right_symbolToValue']
+
+    # We don't know how many "soundframes" there are, so using sys.maxsize, it reads everything it can
+    data = BitArray(sound.readframes(sys.maxsize)).bin
+
+    # Golomb attributes for left channel
+    left_log_m = math.log(left_m,2)
+    left_c = int(math.ceil(left_log_m))
+    left_div = int(math.pow(2,left_c) - left_m)
+
+    # Golomb attributes for right channel
+    right_log_m = math.log(right_m,2)
+    right_c = int(math.ceil(right_log_m))
+    right_div = int(math.pow(2,right_c) - right_m)
+
+    i = 0
+    samplesDecoded = 0
+    signValue = 1
+    readingLeft = True
+    valLeft = None
+    valRight = None
+    prevLeft = 0
+    prevRight = 0
+    pbar = tqdm(total=len(data))
+    while i < len(data):
+        if readingLeft:
+            c = left_c
+            div = left_div
+            golomb_m = left_m
+        else:
+            c = right_c
+            div = right_div
+            golomb_m = right_m
+
+        ### Start of Golomb coding
+        # Unary coding
+        pos = 0
+        if i>=len(data):
+            break
+        while data[i] == '1':
+            i += 1
+            pos += 1
+            pbar.update(1)
+        q = pos  #q -> '0'
+        
+        i +=1
+        pbar.update(1)
+        
+        # Binary remainder
+        if i+c-1>=len(data):
+            break
+        if int(data[i:i+c-1],2)>=div:
+            #ler c, skip c-1
+            if i+c>=len(data):
+                break
+            # If remainder is of length c, because of only c-1 '1' bits
+            r = int(data[i:i+c],2)
+            i += c
+            pbar.update(c)
+        else:
+            #ler c-1, skip c-1-1
+            r = int(data[i:i+c-1],2)
+            i += c-1
+            pbar.update(c-1)
+
+        if r >= div:
+            r = r - div
+        val = (q*golomb_m + r)*signValue # decoded value from Golomb
+
+        if readingLeft:
+            d_left = left_symbolToValue[val]
+            valLeft = d_left+prevLeft
+            prevLeft = valLeft
+            readingLeft = False
+        else:
+            d_right = right_symbolToValue[val]
+            valRight = d_right+prevRight
+            prevRight = valRight
+            readingLeft = True
+
+        if valRight != None and valLeft != None:
+            samplesDecoded += 1
+            outSamples += struct.pack('<hh', valLeft, valRight)
+            valRight = None
+            valLeft = None
+    pbar.close()
+
+    # Write new file
+    print("Done. Writing file...")
+    out = wave.open(outFname, "w")
+    out.setnchannels(n_channels)
+    out.setsampwidth(samp_width)
+    out.setframerate(framerate)
+    out.writeframesraw(outSamples.tobytes())
+    out.close()
+    print("File written: {}".format(outFname))
+
+### Golomb encoding function calculating differences between samples.
+# fname - file to be read
+# golomb_m - m value to be used in Golomb
 def diff_encode(fname,golomb_m=512):
     sound = wave.open(fname, "r")
 
@@ -62,7 +241,7 @@ def diff_encode(fname,golomb_m=512):
 
     print("Done. Writing file...")
     # Write new file
-    out = wave.open(fname+"_encoded_m{}.wav".format(golomb_m), "w")
+    out = wave.open(fname+"_encoded.wav".format(golomb_m), "w")
     out.setnchannels(n_channels)
     out.setsampwidth(samp_width)
     out.setframerate(framerate)
@@ -70,6 +249,9 @@ def diff_encode(fname,golomb_m=512):
     out.close()
     print("File written.")
 
+### Golomb decoding function. Complement of diff_encode
+# fname - file to be read
+# golomb_m - m value to be used in Golomb
 def diff_decode(fname,golomb_m=512):
     sound = wave.open(fname, "rb")
 
@@ -85,8 +267,6 @@ def diff_decode(fname,golomb_m=512):
     data = BitArray(sound.readframes(sys.maxsize)).bin
     sound.close()
 
-    # TODO: Integrate Golomb decoding here. Create custom "for" to not loop every bit. ATM every bit is looped
-    # twice. Plus comparing in "if"s, takes too long.
     log_m = math.log(golomb_m,2)
     c = int(math.ceil(log_m))
     powerOfTwo = log_m == c
@@ -189,50 +369,6 @@ def diff_decode(fname,golomb_m=512):
             valRight = None
             valLeft = None
     pbar.close()
-        
-    """
-    for i,bit in data_iter:
-        count += 1
-        if(count%1000==0):
-            print(str(int(count/1000))+" thousand bits")
-        # Sign bit
-        if signValue == None:
-            if bit=='1':
-                signValue = -1
-            else:
-                signValue = 1
-        # Code bits
-        else:
-            if startGolomb < 0:
-                startGolomb = i
-            if bit=='0' or endBinary>-1:
-                if endBinary > -1:
-                    # End of unary
-                    startBinary = i
-                    endBinary = i+c
-                elif(i < endBinary):
-                    continue
-                # End of Golomb word
-                s = data[startGolomb:endBinary]
-                #print(type(s))
-                #print(s)
-
-                val = Golomb.from_golomb(s,golomb_m) * signValue
-                #print(val)
-                if readingLeft:
-                    valLeft = val
-                else:
-                    valRight = val
-                # Value read. Reset control vars.
-                startGolomb = -1
-                startBinary = -1
-                endBinary = -1
-                signValue = None
-                if valRight != None and valLeft != None:
-                    outSamples += struct.pack('<hh', valLeft, valRight)
-                    valRight = None
-                    valLeft = None
-    """
 
     # Write new file
     print("Done. Writing file...")
@@ -243,57 +379,6 @@ def diff_decode(fname,golomb_m=512):
     out.writeframesraw(outSamples.tobytes())
     out.close()
     print("File written.")
-
-# BARELY STARTED. TODO complete function when the base function is done
-def diff_encode_dict(fname):
-    sound = wave.open(fname, "r")
-
-    # File attributes
-    n_channels = sound.getnchannels()
-    samp_width = sound.getsampwidth()
-    framerate = sound.getframerate()
-
-    prev_left = 0
-    prev_right = 0
-    diff_left = {}
-    diff_right = {}
-    for _ in range(sound.getnframes()):
-        sample = sound.readframes(1)
-        valLeft, valRight = struct.unpack('<hh', sample)
-        #sample = struct.pack('<hh', valLeft, valRight)
-        
-        # Calculating current difference
-        d_left = valLeft - prev_left
-        d_right = valRight - prev_right
-
-        # Updating last difference
-        prev_left = valLeft
-        prev_right = valRight
-
-        # Storing counts in dictionary
-        if d_left in diff_left:
-            diff_left[d_left] += 1
-        else:
-            diff_left[d_left] = 1
-
-        if d_right in diff_right:
-            diff_right[d_right] += 1
-        else:
-            diff_right[d_right] = 1
-    sound.close()
-
-    differencesLeft = [(k, diff_left[k]) for k in sorted(diff_left, key=diff_left.get, reverse=True)]
-    differencesRight = [(k, diff_right[k]) for k in sorted(diff_right, key=diff_right.get, reverse=True)]
-
-
-    # Write new file
-    copy = wave.open("encoded.wav", "w")
-    copy.setnchannels(n_channels)
-    copy.setsampwidth(samp_width)
-    copy.setframerate(framerate)
-    for sample in samples:
-        copy.writeframesraw(sample)
-    copy.close()
 
 def main():
     if len(sys.argv) < 2:

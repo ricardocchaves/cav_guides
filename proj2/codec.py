@@ -19,6 +19,8 @@ def diff_encode(fname,golomb_m=512):
     prev_left = 0
     prev_right = 0
     print("Starting Golomb encoded differences. No probabilities.")
+    c = int(math.ceil(math.log(golomb_m,2)))
+    div = int(math.pow(2,c) - golomb_m)
     for _ in tqdm(range(sound.getnframes())):
         sample = sound.readframes(1)
         valLeft, valRight = struct.unpack('<hh', sample)
@@ -37,14 +39,14 @@ def diff_encode(fname,golomb_m=512):
 
         # 0 if positive, 1 if negative
         if d_left >= 0:
-            valLeft = '0'+Golomb.to_golomb(d_left,golomb_m)
+            valLeft = '0'+Golomb.to_golomb(d_left,golomb_m,c,div)
         else:
-            valLeft = '1'+Golomb.to_golomb(-d_left,golomb_m)
+            valLeft = '1'+Golomb.to_golomb(-d_left,golomb_m,c,div)
 
         if d_right >= 0:
-            valRight = '0'+Golomb.to_golomb(d_right,golomb_m)
+            valRight = '0'+Golomb.to_golomb(d_right,golomb_m,c,div)
         else:
-            valRight = '1'+Golomb.to_golomb(-d_right,golomb_m)
+            valRight = '1'+Golomb.to_golomb(-d_right,golomb_m,c,div)
 
         if _ < 10:
             print(valLeft)
@@ -85,7 +87,9 @@ def diff_decode(fname,golomb_m=512):
 
     # TODO: Integrate Golomb decoding here. Create custom "for" to not loop every bit. ATM every bit is looped
     # twice. Plus comparing in "if"s, takes too long.
-    c = int(math.ceil(math.log(golomb_m,2)))
+    log_m = math.log(golomb_m,2)
+    c = int(math.ceil(log_m))
+    powerOfTwo = log_m == c
     print("c: "+str(c))
     div = int(math.pow(2,c) - golomb_m)
     i = 0
@@ -104,7 +108,7 @@ def diff_decode(fname,golomb_m=512):
             signValue = -1
         else:
             signValue = 1
-        if samplesDecoded <= 5:
+        if samplesDecoded <= 10:
             print("Sign: "+ str(data[i]))
 
         #Update index
@@ -113,13 +117,18 @@ def diff_decode(fname,golomb_m=512):
         ### Start of Golomb coding
         # Unary coding
         pos = 0
+        #print("data[i] before: "+data[i])
+        if i>=len(data):
+            break
         while data[i] == '1':
             i += 1
             pos += 1
+            #print("data[i] while: "+data[i])
             pbar.update(1)
         q = pos  #q -> '0'
+        #print("data[i] after: "+data[i])
         
-        if samplesDecoded <= 5:
+        if samplesDecoded <= 10:
             print("Number of 1: "+ str(q))
         
         i +=1
@@ -128,33 +137,34 @@ def diff_decode(fname,golomb_m=512):
        
         #untill c-1 ((+1)because list slicing is right exclusive)
 
-        if samplesDecoded <= 5:
-            print("Bin: "+ str(data[i:i+c-1 +1]))
+        if i+c-1>=len(data):
+            break
+        if samplesDecoded <= 10:
+            print("Bin: "+ str(data[i:i+c-1]))
 
-        if data[i:i+c-1 +1] == '1'*(c-1):
+        if int(data[i:i+c-1],2)>=div:
             #ler c, skip c-1
-            if samplesDecoded <= 5:
-                print(data[i:i+c+1])
+            if i+c>=len(data):
+                break
+            if samplesDecoded <= 10:
+                print(data[i:i+c])
             # If remainder is of length c, because of only c-1 '1' bits
-            r = int(data[i:i+c +1],2)
+            r = int(data[i:i+c],2)
             i += c
             pbar.update(c)
         else:
             #ler c-1, skip c-1-1
-            if samplesDecoded <= 5:
-                print(data[i:i+c-1 +1])
-            r = int(data[i:i+c-1 +1],2)
+            if samplesDecoded <= 10:
+                print(data[i:i+c-1])
+            r = int(data[i:i+c-1],2)
             i += c-1
             pbar.update(c-1)
 
-        if r > div:
+        if r >= div:
             r = r - div
         val = (q*golomb_m + r)*signValue
 
-        #first of next
-        i += 1
-        pbar.update(1)
-        if samplesDecoded <= 5:
+        if samplesDecoded <= 10:
             print("first of next: "+data[i])
 
 
@@ -170,11 +180,11 @@ def diff_decode(fname,golomb_m=512):
             readingLeft = True
 
         if valRight != None and valLeft != None:
-            samplesDecoded += 1
-            if samplesDecoded <= 5:
+            if samplesDecoded <= 10:
                 print("left "+str(d_left))
                 print("right "+str(d_right))
                 print()
+            samplesDecoded += 1
             outSamples += struct.pack('<hh', valLeft, valRight)
             valRight = None
             valLeft = None
@@ -230,7 +240,7 @@ def diff_decode(fname,golomb_m=512):
     out.setnchannels(n_channels)
     out.setsampwidth(samp_width)
     out.setframerate(framerate)
-    out.writeframesraw(outSamples.bytes)
+    out.writeframesraw(outSamples.tobytes())
     out.close()
     print("File written.")
 
@@ -291,11 +301,11 @@ def main():
         return
     fname = sys.argv[1]
 
-    #diff_encode(fname,512)
+    diff_encode(fname,512)
     #diff_decode(fname,512)
 
     #diff_encode(fname,1055)
-    diff_decode(fname,1055)
+    #diff_decode(fname,1055)
 
 if __name__ == "__main__":
     main()

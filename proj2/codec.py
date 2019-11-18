@@ -245,7 +245,7 @@ def diff_encode(fname,golomb_m=512):
 
     print("Done. Writing file...")
     # Write new file
-    out = wave.open(fname+"_encoded.wav".format(golomb_m), "w")
+    out = wave.open(fname+"_encoded.wav", "w")
     out.setnchannels(n_channels)
     out.setsampwidth(samp_width)
     out.setframerate(framerate)
@@ -385,16 +385,14 @@ def diff_decode(fname,golomb_m=512):
     print("File written.")
 
 def main():
-    if len(sys.argv) < 2:
-        print("USAGE: python3 {} sound_file.wav".format(sys.argv[0]))
+    if len(sys.argv) < 3:
+        print("USAGE: python3 {} sound_file.wav Golomb_M".format(sys.argv[0]))
         return
     fname = sys.argv[1]
+    m = int(sys.argv[2])
 
-    diff_encode(fname,512)
-    #diff_decode(fname,512)
-
-    #diff_encode(fname,1055)
-    #diff_decode(fname,1055)
+    diff_encode(fname,m)
+    diff_decode(fname+"_encoded.wav",m)
 
 if __name__ == "__main__":
     main()

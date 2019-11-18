@@ -8,7 +8,7 @@ from bitstring import BitArray
 import math
 
 numberOfBitsOriginal = 16
-numberOfBitsNew = 7
+numberOfBitsNew = 3
 
 ### Golomb decoding function
 ### Opens the file fname, gets the headers required for the decoding process and writes the

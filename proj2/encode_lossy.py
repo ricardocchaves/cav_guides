@@ -12,7 +12,7 @@ import operator
 from scipy.optimize import curve_fit
 
 numberOfBitsOriginal = 16
-numberOfBitsNew = 7
+numberOfBitsNew = 3
 
 def readWavFile(fname):
     sound = wave.open(fname, "r")

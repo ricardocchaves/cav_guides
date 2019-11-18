@@ -6,7 +6,6 @@ from tqdm import tqdm
 from bitstring import BitArray
 import math
 
-import matplotlib.pyplot as plt
 import numpy as np
 import operator
 
@@ -86,6 +85,7 @@ def findBestGolomb(symbol_mapping, show):
     popt, pcov = curve_fit(golomb_pattern, x, y)
 
     if show:
+        import matplotlib.pyplot as plt
         plt.figure(figsize=(7, 5))
         plt.plot( x, golomb_pattern(x, *popt), 'bo', markersize=0.5)
         plt.ylabel('curve')
@@ -128,6 +128,7 @@ def main():
     #show sample values' probability distribution after predictor is applyed
     """
     if(show):
+        import matplotlib.pyplot as plt
         plt.figure(figsize=(7, 5))
         plt.plot( [k for k in sample_probability.keys()], [sample_probability.get(k) for k in sample_probability.keys()], 'ro', markersize=0.5)
         plt.ylabel('probability')
@@ -144,6 +145,7 @@ def main():
     #show choosen symbols' probability distribution 
     """
     if(show):
+        import matplotlib.pyplot as plt
         plt.figure(figsize=(7, 5))
         plt.plot( [s for s in symbol_mapping.keys()], [symbol_mapping.get(s)[1] for s in symbol_mapping.keys()], 'ro', markersize=0.5)
         plt.ylabel('probability')

@@ -59,9 +59,11 @@ def encode(outFname,leftSamples,rightSamples,left_symbolToValue,
     print("Wrote header with size {} bytes.".format(header_size))
 
     # Writing data
-    out.writeframesraw(buffer.tobytes())
+    outBytes = buffer.tobytes()
+    print("Wrote {} bytes of data.".format(len(outBytes)))
+    out.writeframesraw(outBytes)
     out.close()
-    print("File written.")
+    print("File written to {}".format(outFname))
 
 ### Golomb decoding function
 ### Opens the file fname, gets the headers required for the decoding process and writes the
@@ -80,7 +82,7 @@ def decode(fname, outFname):
     # Get header information
     from pickle import loads
     header_size = struct.unpack('<i',sound.readframes(1))[0]
-    header_serialized = sound.readframes(header_size)
+    header_serialized = sound.readframes(math.ceil(header_size/4))
     header = loads(header_serialized)
     left_m = header['m_left']
     right_m = header['m_right']
@@ -178,7 +180,9 @@ def decode(fname, outFname):
     out.setnchannels(n_channels)
     out.setsampwidth(samp_width)
     out.setframerate(framerate)
-    out.writeframesraw(outSamples.tobytes())
+    outBytes = outSamples.tobytes()
+    print("Writing {} bytes of data.".format(len(outBytes)))
+    out.writeframesraw(outBytes)
     out.close()
     print("File written: {}".format(outFname))
 

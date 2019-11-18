@@ -15,13 +15,6 @@ from scipy.optimize import curve_fit
 def readWavFile(fname):
     sound = wave.open(fname, "r")
 
-    buffer = BitArray()
-
-    # File attributes
-    n_channels = sound.getnchannels()
-    samp_width = sound.getsampwidth()
-    framerate = sound.getframerate()
-
     prev_left = 0
     prev_right = 0
     sample_values = []
@@ -114,14 +107,14 @@ def main():
     fname = sys.argv[1]
     show = int(sys.argv[2])
 
-#1 #Read Samples from file
+    #1 #Read Samples from file
     samples, diff_samples = readWavFile(fname)
     leftSamples = [l for (l,r) in diff_samples]
     rightSamples = [r for (l,r) in diff_samples]
     #print(samples)
 
 
-#2 #Calculate probabilty of each sample value after predictor is applyed
+    #2 #Calculate probabilty of each sample value after predictor is applyed
     sample_probability_right = prob([r for (l,r) in diff_samples])
     sample_probability_left = prob([l for (l,r) in diff_samples])
 
@@ -137,7 +130,7 @@ def main():
         plt.show(block = False)
     """
     
-#3 #Map symbols to sample values accourding to probability
+    #3 #Map symbols to sample values accourding to probability
     #{ symbol: (value, probability)}
     left_symbolToValue, left_valueToSymbol  = map_symbols(sample_probability_left)
     right_symbolToValue, right_valueToSymbol = map_symbols(sample_probability_right)
@@ -153,13 +146,13 @@ def main():
         plt.show(block = False)
     """
     
-#4 #Find best Golomb Parameters
+    #4 #Find best Golomb Parameters
     alpha_left, m_left = findBestGolomb(left_symbolToValue,show)
     alpha_right, m_right = findBestGolomb(right_symbolToValue,show)
     print("Found Parameters: \n Alpha: {}, \n M: {} ".format(alpha_left,m_left))
     print("Found Parameters: \n Alpha: {}, \n M: {} ".format(alpha_right,m_right))
 
-#5 #Encode as Golomb
+    #5 #Encode as Golomb
     #TODO
     symbolsLeft = {}
     symbolsRight = {}

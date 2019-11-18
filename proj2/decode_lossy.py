@@ -83,7 +83,8 @@ def decode_lossy(fname, outFname):
         # Binary remainder
         if i+c-1>=len(data):
             break
-        if int(data[i:i+c-1],2)>=div:
+        # In the case that c is the smallest (1 bit), always read c bits, never c-1
+        if (c-1)==0 or int(data[i:i+c-1],2)>=div:
             #ler c, skip c-1
             if i+c>=len(data):
                 break

@@ -1,0 +1,6 @@
+file,size,encoding(s),size_encoded,decoding(s),mLeft,mRight,compressionRatio(orig/encoded)
+sample01.wav,5176796,1:56,3930908,0:47,972,1055,1.317
+sample02.wav,2589596,0:58,2040909,0:22,635,276,1.269
+sample03.wav,3530396,1:18,2518215,0:30,353,349,1.402
+sample04.wav,2354396,0:52,1813000,0:20,865,912,1.299
+sample05.wav,3647996,1:21,2530384,0:33,175,137,1.442

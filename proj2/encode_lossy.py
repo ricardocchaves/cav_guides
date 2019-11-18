@@ -158,6 +158,10 @@ def main():
     #4 #Find best Golomb Parameters
     alpha_left, m_left = findBestGolomb(left_symbolToValue,show)
     alpha_right, m_right = findBestGolomb(right_symbolToValue,show)
+    if m_left<2:
+        m_left = 2
+    if m_right<2:
+        m_right = 2
     print("Found Parameters: \n Alpha: {}, \n M: {} ".format(alpha_left,m_left))
     print("Found Parameters: \n Alpha: {}, \n M: {} ".format(alpha_right,m_right))
 

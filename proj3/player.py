@@ -19,7 +19,7 @@ def main():
 		ret, frame = cap.read()
 		if ret:
 			cv.imshow('Frame',frame)
-			if cv.waitKey(framerate) & 0xFF == ord('q'):
+			if cv.waitKey(int((1/framerate)*1000)) & 0xFF == ord('q'):
 				break
 		else:
 			break

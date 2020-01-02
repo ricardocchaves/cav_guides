@@ -26,10 +26,11 @@ def main():
     if not ret:
         input("NOT RET 2")
 
-    N = 4
-    offset = 4
+    N = 8
+    offset = 1
     print(cap.height)
     print(cap.width)
+    #print(type(frame))
     motion_vectors_to_encode, residual_diffs = inter_frame_processing(cap.height,cap.width,frame, ref_frame, N, offset)
     #written is this order:
     #                       left to right, top to bottom, blocks first
@@ -50,6 +51,50 @@ def main():
     #                           bloco 0,0 Y                    bloco = 0,0 U           bloco 0,0 V            bloco 0,1 Y
 
     #print(motion_vectors_to_encode)
+    decode_inter_frame(cap.height,cap.width,ref_frame,N, motion_vectors_to_encode, residual_diffs)
+
+def decode_inter_frame(height,width,ref_frame, N, motion_vectors, residual_diffs):
+
+    frame = ref_frame #TODO: change to create new np array
+    for cblock_x in tqdm(range(0,width//N)):
+        for cblock_y in range(0,height//N):
+            
+            block_index = cblock_y + N*cblock_x
+
+            mv_index = block_index*3
+            block_mv_y = motion_vectors[mv_index]
+            block_mv_u = motion_vectors[mv_index+1]
+            block_mv_v = motion_vectors[mv_index+2]
+            block_mv_array = [block_mv_y, block_mv_u, block_mv_v ]
+
+            residual_index = mv_index*N*N
+            block_mv_residuals = residual_diffs[residual_index:residual_index+N*N ]
+          
+            #Fill in this block into the frame
+            block_pixel_upper_left_x = cblock_x * N
+            block_pixel_upper_left_y = cblock_y * N
+            
+            for x in range(0,N):
+                for y in range(0,N):
+                    
+                    for channel in range(0,3):
+                        #go get reference block
+                        ref_block_x = cblock_x + block_mv_array[channel][0] #mv.x
+                        ref_block_y = cblock_x + block_mv_array[channel][1] #mv.y
+                        #convert block coordinated to pixel coordinates
+                        ref_block_pixel_upper_left_x = ref_block_x * N
+                        ref_block_pixel_upper_left_y = ref_block_y * N
+
+                        #get pixel values from reference bloc and add residuals
+                        #and write to frame (that is being contructed)
+                        for x in range(0,N):
+                            for y in range(0,N):
+                                frame[block_pixel_upper_left_y + y, block_pixel_upper_left_x + x, channel] = \
+                                    ref_frame[ref_block_pixel_upper_left_y + y, ref_block_pixel_upper_left_x + x, channel] \
+                                        + block_mv_residuals[x*4 + y]
+
+    return frame
+                                
 
 def inter_frame_processing(height, width, frame, ref_frame, N, offset):
     if not ((N != 0) and (N & (N-1) == 0)):
@@ -95,8 +140,8 @@ def inter_frame_processing(height, width, frame, ref_frame, N, offset):
                 #print("best diffs = "+ str(best_diffs))
                 #input()
 
-                motion_vectors_to_encode +=(motion_vector_x,motion_vector_y)
-                residual_diffs += [best_diffs]
+                motion_vectors_to_encode += [(motion_vector_x,motion_vector_y)]
+                residual_diffs += best_diffs
                 
 
     return motion_vectors_to_encode, residual_diffs
@@ -119,8 +164,9 @@ def compare_blocks(frame, cbx, cby, ref_frame, bx, by, N, ch):
 
             reference_pixel_value = int( ref_frame[by_pixel_upper_left + y, bx_pixel_upper_left + x, ch] ) 
 
-            overall_diff += pixel_value - reference_pixel_value
-            diffs += [pixel_value - reference_pixel_value]
+            diff = pixel_value - reference_pixel_value
+            overall_diff += diff
+            diffs += [diff]
 
     return overall_diff, diffs
 

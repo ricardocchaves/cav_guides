@@ -27,10 +27,9 @@ def main():
         input("NOT RET 2")
 
     N = 4
-    offset = 8
+    offset = 4
     print(cap.height)
     print(cap.width)
-    
     motion_vectors_to_encode, residual_diffs = inter_frame_processing(cap.height,cap.width,frame, ref_frame, N, offset)
     #written is this order:
     #                       left to right, top to bottom, blocks first
@@ -50,6 +49,8 @@ def main():
     #     residual_diffs = (0,0) - (0,1) - (1,0) - (1,1) | 0,0 - 0,1 - 1,0 - 1,1 | 0,0 - 0,1 - 1,0 - 1,1 | 0,0 - 0,1 - 1,0 - 1,1 |
     #                           bloco 0,0 Y                    bloco = 0,0 U           bloco 0,0 V            bloco 0,1 Y
 
+    #print(motion_vectors_to_encode)
+
 def inter_frame_processing(height, width, frame, ref_frame, N, offset):
     if not ((N != 0) and (N & (N-1) == 0)):
         print("N is not power of 2")
@@ -58,10 +59,10 @@ def inter_frame_processing(height, width, frame, ref_frame, N, offset):
     motion_vectors_to_encode = []
     residual_diffs = []
 
-    for cblock_x in range(0,width//N):
+    for cblock_x in tqdm(range(0,width//N)):
         for cblock_y in range(0,height//N):
             #current block = (cblock_x, cblock_y)
-
+            #print(cblock_x,cblock_y)
             for channel in range(0,3):
                 #find best block for each channel
                 diff = 0
@@ -73,9 +74,9 @@ def inter_frame_processing(height, width, frame, ref_frame, N, offset):
                 for bx in range(cblock_x-offset, cblock_x+offset+1):
                     for by in range(cblock_y-offset, cblock_y+offset+1):
                         #Search for similar blocks in area of offset number of blocks around current block
-                        if bx >= 0 and bx < width and by>=0 and by<height:
+                        if bx >= 0 and bx < width//N and by>=0 and by<height//N:
                             #This is a valid block to compare with
-                            overall_diff, diffs = compare_blocks(frame, cblock_x,cblock_y, ref_frame, bx,by, N, channel)
+                            overall_diff, diffs = compare_blocks(frame, cblock_x,cblock_y, ref_frame, bx, by, N, channel)
                             #print(abs(overall_diff))
                             #print(bx,by)
                             if abs(overall_diff) < abs(min_diff):
@@ -101,7 +102,7 @@ def inter_frame_processing(height, width, frame, ref_frame, N, offset):
     return motion_vectors_to_encode, residual_diffs
 
 
-def compare_blocks(frame, cbx, cby, ref_frame, bx,by, N, ch):
+def compare_blocks(frame, cbx, cby, ref_frame, bx, by, N, ch):
     #convert block coordenates to pixel coordinates
     cbx_pixel_upper_left = cbx * N
     cby_pixel_upper_left = cby * N
@@ -114,9 +115,9 @@ def compare_blocks(frame, cbx, cby, ref_frame, bx,by, N, ch):
     for x in range(0,N):
         for y in range(0,N):
 
-            pixel_value = int( frame[cbx_pixel_upper_left + x, cby_pixel_upper_left + y, ch] )
+            pixel_value = int( frame[cby_pixel_upper_left + y, cbx_pixel_upper_left + x, ch] )
 
-            reference_pixel_value = int( ref_frame[bx_pixel_upper_left + x,by_pixel_upper_left + y, ch] ) 
+            reference_pixel_value = int( ref_frame[by_pixel_upper_left + y, bx_pixel_upper_left + x, ch] ) 
 
             overall_diff += pixel_value - reference_pixel_value
             diffs += [pixel_value - reference_pixel_value]

@@ -67,8 +67,8 @@ def decode_inter_frame(height,width,ref_frame, N, motion_vectors, residual_diffs
             block_mv_v = motion_vectors[mv_index+2]
             block_mv_array = [block_mv_y, block_mv_u, block_mv_v ]
 
-            residual_index = mv_index*N*N
-            block_mv_residuals = residual_diffs[residual_index:residual_index+N*N ]
+            residual_index = block_index*N*N*3
+            block_residuals = residual_diffs[residual_index:residual_index+N*N*3 ] #residuais para os 3 vetores y,u,v deste bloco
           
             #Fill in this block into the frame
             block_pixel_upper_left_x = cblock_x * N
@@ -80,7 +80,7 @@ def decode_inter_frame(height,width,ref_frame, N, motion_vectors, residual_diffs
                     for channel in range(0,3):
                         #go get reference block
                         ref_block_x = cblock_x + block_mv_array[channel][0] #mv.x
-                        ref_block_y = cblock_x + block_mv_array[channel][1] #mv.y
+                        ref_block_y = cblock_y + block_mv_array[channel][1] #mv.y
                         #convert block coordinated to pixel coordinates
                         ref_block_pixel_upper_left_x = ref_block_x * N
                         ref_block_pixel_upper_left_y = ref_block_y * N
@@ -91,7 +91,7 @@ def decode_inter_frame(height,width,ref_frame, N, motion_vectors, residual_diffs
                             for y in range(0,N):
                                 frame[block_pixel_upper_left_y + y, block_pixel_upper_left_x + x, channel] = \
                                     ref_frame[ref_block_pixel_upper_left_y + y, ref_block_pixel_upper_left_x + x, channel] \
-                                        + block_mv_residuals[x*4 + y]
+                                        + block_residuals[channel*N*N + x*N + y]
 
     return frame
                                 

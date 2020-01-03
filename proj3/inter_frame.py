@@ -1,4 +1,3 @@
-
 import cv2 as cv
 import sys
 import math
@@ -6,7 +5,7 @@ import numpy as np
 from tqdm import tqdm
 from multiprocessing import Process, Value
 import time
-from pixel_iteration import pixel_iteration_fast
+from pixel_iteration import decode_inter_frame2_fast, inter_frame_processing_fast, compare_blocks_fast
 
 from VideoCaptureYUV import VideoCaptureYUV
 
@@ -32,6 +31,7 @@ def main():
     print(cap.width)
     #print(type(frame))
     motion_vectors_to_encode, residual_diffs = inter_frame_processing(cap.height,cap.width,frame, ref_frame, N, offset)
+    #motion_vectors_to_encode, residual_diffs = inter_frame_processing_fast(cap.height,cap.width,frame, ref_frame, N, offset)
     #written is this order:
     #                       left to right, top to bottom, blocks first
     #                       left to right, top to bottom, pixel diffs first
@@ -51,7 +51,10 @@ def main():
     #                           bloco 0,0 Y                    bloco = 0,0 U           bloco 0,0 V            bloco 0,1 Y
 
     #print(motion_vectors_to_encode)
-    decoded_frame = decode_inter_frame2(cap.height,cap.width,ref_frame,N, motion_vectors_to_encode, residual_diffs)
+    #decoded_frame = decode_inter_frame2(cap.height,cap.width,ref_frame,N, motion_vectors_to_encode, residual_diffs)
+    s = time.time()
+    decoded_frame = decode_inter_frame2_fast(cap.height,cap.width,ref_frame,N, motion_vectors_to_encode, residual_diffs)
+    print("Decoding time: {:0f}s".format(time.time()-s))
     
 
     cblock_x = 98
@@ -138,7 +141,7 @@ def decode_inter_frame(height,width,ref_frame, N, motion_vectors, residual_diffs
 def decode_inter_frame2(height,width,ref_frame, N, motion_vectors, residual_diffs):
 
     frame = ref_frame #TODO: change to create new np array
-    for cblock_x in tqdm(range(0,width//N)):
+    for cblock_x in tqdm(range(0,width//N),desc="INTER DECODE"):
         for cblock_y in range(0,height//N):
             
             #get upper left pixel of this block
@@ -176,7 +179,7 @@ def inter_frame_processing(height, width, frame, ref_frame, N, offset):
     motion_vectors_to_encode = {}
     residual_diffs = {}
 
-    for cblock_x in tqdm(range(0,width//N)):
+    for cblock_x in tqdm(range(0,width//N),desc="INTER ENCODE"):
         for cblock_y in range(0,height//N):
             #current block = (cblock_x, cblock_y)
             #print(cblock_x,cblock_y)
@@ -193,9 +196,9 @@ def inter_frame_processing(height, width, frame, ref_frame, N, offset):
                         #Search for similar blocks in area of offset number of blocks around current block
                         if bx >= 0 and bx < width//N and by>=0 and by<height//N:
                             #This is a valid block to compare with
-                            overall_diff, diffs = compare_blocks(frame, cblock_x,cblock_y, ref_frame, bx, by, N, channel)
-                            #print(abs(overall_diff))
-                            #print(bx,by)
+                            #overall_diff, diffs = compare_blocks(frame, cblock_x,cblock_y, ref_frame, bx, by, N, channel)
+                            diffs = compare_blocks_fast(frame, cblock_x,cblock_y, ref_frame, bx, by, N, channel)
+                            overall_diff = sum(diffs)
                             if abs(overall_diff) < abs(min_diff):
                                 min_diff = overall_diff
                                 best_diffs = diffs
@@ -205,15 +208,6 @@ def inter_frame_processing(height, width, frame, ref_frame, N, offset):
                 #Compute motion vector for this channel
                 motion_vector_x = best_block_x - cblock_x
                 motion_vector_y = best_block_y - cblock_y
-                #print(cblock_x,cblock_y)
-                #print(best_block_x,best_block_y)
-                #print(min_diff)
-                #print("MV: "+str(motion_vector_x)+" , "+str(motion_vector_y))
-                #print("best diffs = "+ str(best_diffs))
-                #input()
-
-                #motion_vectors_to_encode += [(motion_vector_x,motion_vector_y)]
-                #residual_diffs += best_diffs
 
                 motion_vectors_to_encode[cblock_x,cblock_y,channel] = (motion_vector_x,motion_vector_y)
                 residual_diffs[cblock_x,cblock_y,channel] = best_diffs

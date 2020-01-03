@@ -8,7 +8,7 @@ import time
 import warnings
 
 from pixel_iteration import pixel_iteration_fast
-from pixel_iteration import toGolomb
+from pixel_iteration import toGolomb as toGolomb_fast
 
 from VideoCaptureYUV import VideoCaptureYUV
 
@@ -91,18 +91,20 @@ def encodeValues(fhandler,values, sym, m_list):
 	fhandler.write(b"\nDATA\n")
 
 	for ch in range(len(values)):
-		_,valueToSymbol = sym[ch]
+		_,valueToSymbol_old = sym[ch]
+		valueToSymbol = valueToSymbol_old.copy()
 		vals = values[ch]
 		m = int(m_list[ch])
 		c = int(math.ceil(math.log(m,2)))
 		div = int(math.pow(2,c) - m)
 		golomb_result = ""
-		for val in tqdm(vals,desc="Golomb"):
-			val = valueToSymbol[val]
-			#golomb_result += toGolomb(val, m, c, div) #15.000/s
-			golomb_result += Golomb.to_golomb(val, m, c, div) #14.500/s
-		fhandler.write(golomb_result.encode("utf-8"))
-		
+		for v in tqdm(vals,desc="Golomb"):
+			val = valueToSymbol[v]
+			#golomb_result += toGolomb_fast(val, m, c, div)
+			#golomb_result += Golomb.to_golomb(val, m, c, div) #14.500/s
+			golomb_result += Golomb.to_golomb_fast(val, m, c, div)
+		fhandler.write(golomb_result.encode('utf-8'))
+		#fhandler.write("".join(golomb_result).encode('utf-8'))
 
 def processFrame(height,width,frame,ID,shared_dict):
 	#y_overall, u_overall, v_overall = pixel_iteration_slow(height,width,frame)

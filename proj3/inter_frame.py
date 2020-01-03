@@ -51,7 +51,45 @@ def main():
     #                           bloco 0,0 Y                    bloco = 0,0 U           bloco 0,0 V            bloco 0,1 Y
 
     #print(motion_vectors_to_encode)
-    decode_inter_frame2(cap.height,cap.width,ref_frame,N, motion_vectors_to_encode, residual_diffs)
+    decoded_frame = decode_inter_frame2(cap.height,cap.width,ref_frame,N, motion_vectors_to_encode, residual_diffs)
+    
+
+    cblock_x = 98
+    cblock_y = 55
+
+    x=2
+    y=4
+    block_pixel_upper_left_x = cblock_x * N +2
+    block_pixel_upper_left_y = cblock_y * N +4
+
+    block_residuals = residual_diffs[cblock_x,cblock_y,2]
+
+    print(block_pixel_upper_left_x,block_pixel_upper_left_y)
+    
+    print(decoded_frame[block_pixel_upper_left_y,block_pixel_upper_left_x,2])
+    print(frame[block_pixel_upper_left_y,block_pixel_upper_left_x,2])
+    print("----")
+    ref_block_x = cblock_x + motion_vectors_to_encode[cblock_x,cblock_y,2][0] #mv.x
+    ref_block_y = cblock_y + motion_vectors_to_encode[cblock_x,cblock_y,2][1] #mv.y
+    #convert block coordinated to pixel coordinates
+    #get upper left pixel of this reference block
+    ref_block_pixel_upper_left_x = ref_block_x * N
+    ref_block_pixel_upper_left_y = ref_block_y * N
+    print(ref_frame[ref_block_pixel_upper_left_y + 4, ref_block_pixel_upper_left_x + 2, 2])
+    print("----")
+    print(x*N + y)
+    print(block_residuals[x*N + y])
+    print(block_residuals)
+
+    print("----")
+    x= 1279
+    y= 718
+    print(decoded_frame[y,x,2])
+    print(frame[y,x,2])
+    print("----")
+    #print(residual_diffs[447,789,2])
+    
+
 
 def decode_inter_frame(height,width,ref_frame, N, motion_vectors, residual_diffs):
 
@@ -177,12 +215,8 @@ def inter_frame_processing(height, width, frame, ref_frame, N, offset):
                 #motion_vectors_to_encode += [(motion_vector_x,motion_vector_y)]
                 #residual_diffs += best_diffs
 
-
                 motion_vectors_to_encode[cblock_x,cblock_y,channel] = (motion_vector_x,motion_vector_y)
-                if (cblock_x,cblock_y,channel) in residual_diffs:
-                    residual_diffs[cblock_x,cblock_y,channel] += best_diffs
-                else:
-                    residual_diffs[cblock_x,cblock_y,channel] = best_diffs
+                residual_diffs[cblock_x,cblock_y,channel] = best_diffs
                     
     return motion_vectors_to_encode, residual_diffs
 
@@ -205,7 +239,7 @@ def compare_blocks(frame, cbx, cby, ref_frame, bx, by, N, ch):
 
             reference_pixel_value = int( ref_frame[by_pixel_upper_left + y, bx_pixel_upper_left + x, ch] ) 
 
-            diff = pixel_value - reference_pixel_value
+            diff = pixel_value - reference_pixel_value 
             overall_diff += diff
             diffs += [diff]
 

@@ -51,6 +51,13 @@ cdef int _nonLinearPredictor(int a, int b, int c):
 
 ####### GOLOMB
 import math
+from numpy import binary_repr
+#cpdef valsToGolomb(int[:] vals)
+#golomb_result = ""
+#for val in tqdm(vals,desc="Golomb"):
+#	val = valueToSymbol[val]
+#	#golomb_result += toGolomb_fast(val, m, c, div) #15.000/s
+#	golomb_result += Golomb.to_golomb(val, m, c, div) #14.500/s
 cpdef toGolomb(int val, int m, int c, int div):
 	cdef int r,q,b
 
@@ -60,12 +67,10 @@ cpdef toGolomb(int val, int m, int c, int div):
 
 	if (r < div):
 		b = c - 1
-		binary = "{0:0"+str(b)+"b}"
-		binary = str(binary.format(r))
+		binary = binary_repr(r,width=b)
 	else:
 		b = c
-		binary = "{0:0"+str(b)+"b}"
-		binary = str(binary.format(r+div))
+		binary = binary_repr(r+div,width=b)
 
 	return unary+"0"+binary
 

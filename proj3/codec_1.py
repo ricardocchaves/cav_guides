@@ -8,6 +8,7 @@ import time
 import warnings
 
 from pixel_iteration import pixel_iteration_fast
+from pixel_iteration import toGolomb
 
 from VideoCaptureYUV import VideoCaptureYUV
 
@@ -92,13 +93,14 @@ def encodeValues(fhandler,values, sym, m_list):
 	for ch in range(len(values)):
 		_,valueToSymbol = sym[ch]
 		vals = values[ch]
-		m = m_list[ch]
+		m = int(m_list[ch])
 		c = int(math.ceil(math.log(m,2)))
 		div = int(math.pow(2,c) - m)
 		golomb_result = ""
-		for val in vals:
+		for val in tqdm(vals,desc="Golomb"):
 			val = valueToSymbol[val]
-			golomb_result += Golomb.to_golomb(val, m, c, div)
+			#golomb_result += toGolomb(val, m, c, div) #15.000/s
+			golomb_result += Golomb.to_golomb(val, m, c, div) #14.500/s
 		fhandler.write(golomb_result.encode("utf-8"))
 		
 
@@ -197,10 +199,10 @@ def dumpFrames(shared_dict, handler, threshold = 50):
 	for i in range(len(symbolToValue_proc)):
 		s = {}
 		# Removing probabilities from symbolToValue map. valueToSymbol already doesn't have them.
-		for k in symbolToValue_proc[i]:
+		for k in symbolToValue_proc[i].keys():
 			s.update({k:symbolToValue_proc[i][k][0]})
 		sym.append((s,valueToSymbol_proc[i]))
-		m.append(m_proc[i])
+		m.append(m_proc[i].value)
 
 	encodeValues(handler, values, sym, m)
 

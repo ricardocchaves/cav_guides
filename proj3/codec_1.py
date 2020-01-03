@@ -204,7 +204,7 @@ def dumpFrames(shared_dict, handler, threshold = 50):
 
 	encodeValues(handler, values, sym, m)
 
-def processChannel(shared_dict, overall,return_m,return_symbolToValue,return_ValueToSymbol):
+def processChannel(shared_dict, overall,return_m,return_symbolToValue,return_valueToSymbol):
 	#### Find best 'm' for every value in each overall
 	# Calculate probabilty of each sample value after predictor is applied
 	sample_probability = GolombEst.prob(overall)

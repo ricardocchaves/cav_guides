@@ -1,7 +1,6 @@
 import wave
 import struct
 import sys
-from Golomb import Golomb
 from tqdm import tqdm
 from bitstring import BitArray
 import math

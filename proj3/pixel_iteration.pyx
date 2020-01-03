@@ -46,3 +46,22 @@ cdef int _nonLinearPredictor(int a, int b, int c):
 		return max(a,b)
 	else:
 		return a+b-c
+
+import math
+cpdef toGolomb(int val, int m, int c, int div):
+	cdef int r,q,b
+
+	r = val % m
+	q =int(math.floor(val / m))
+	unary = "1"*q
+
+	if (r < div):
+		b = c - 1
+		binary = "{0:0"+str(b)+"b}"
+		binary = str(binary.format(r))
+	else:
+		b = c
+		binary = "{0:0"+str(b)+"b}"
+		binary = str(binary.format(r+div))
+
+	return unary+"0"+binary

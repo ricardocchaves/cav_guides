@@ -38,6 +38,9 @@ def encode(inputFile, outputFile):
 
 	header = cap.header.encode('utf-8')
 
+	output = open(outputFile, 'wb')
+	output.write(header)
+
 	cnt = 1
 	manager = Manager()
 	shared_dict = manager.dict()
@@ -54,10 +57,12 @@ def encode(inputFile, outputFile):
 					processes[p].terminate()
 				processes.clear()
 				currentProcess = 0
-				shared_dict_size = len(shared_dict)*3*len(shared_dict[1][0])//(1024*1024)
 
-				print("\033[A\033[AShared dict. {} frames, {} MB ".format(len(shared_dict),shared_dict_size))
-				#pbar.update(cpu_count())
+				dumpFrames(shared_dict,output)
+
+				shared_dict_size = len(shared_dict)*3*cap.width*cap.height//(1024*1024)
+
+				print("\033[A\033[A Shared dict: {} frames, {} MB ".format(len(shared_dict),shared_dict_size))
 				time.sleep(0.2)
 
 			p = Process(target=processFrame,args=(cap.height,cap.width,frame,cnt,shared_dict))
@@ -69,64 +74,9 @@ def encode(inputFile, outputFile):
 			currentProcess += 1
 		else:
 			break
+	dumpFrames(shared_dict,output,0)
 
-	y_overall = []
-	u_overall = []
-	v_overall = []
-	for frame in shared_dict:
-		y,u,v = shared_dict[frame]
-		y_overall.append(y)
-		u_overall.append(u)
-		v_overall.append(v)
-
-	shared_dict.clear()
-
-	values = (y_overall,u_overall,v_overall)
-
-	#### Find best 'm' for every value in each overall
-	# Calculate probabilty of each sample value after predictor is applied
-	sample_probability_y = GolombEst.prob([r for (l,r) in y_overall])
-	sample_probability_u = GolombEst.prob([r for (l,r) in u_overall])
-	sample_probability_v = GolombEst.prob([r for (l,r) in v_overall])
-	
-	# Map symbols to sample values according to probability
-	#{ symbol: (value, probability)}
-	y_symbolToValue, y_valueToSymbol  = GolombEst.map_symbols(sample_probability_y)
-	u_symbolToValue, u_valueToSymbol  = GolombEst.map_symbols(sample_probability_u)
-	v_symbolToValue, v_valueToSymbol  = GolombEst.map_symbols(sample_probability_v)
-
-	# Find best Golomb Parameters
-	alpha_y, m_y = GolombEst.findBestGolomb(y_symbolToValue,False)
-	alpha_u, m_u = GolombEst.findBestGolomb(u_symbolToValue,False)
-	alpha_v, m_v = GolombEst.findBestGolomb(v_symbolToValue,False)
-
-	symbolsY = {}
-	symbolsU = {}
-	symbolsV = {}
-	# Removing probabilities from symbolToValue map. valueToSymbol already doesn't have them.
-	for k in y_symbolToValue:
-		symbolsY.update({k:y_symbolToValue[k][0]})
-	for k in u_symbolToValue:
-		symbolsU.update({k:u_symbolToValue[k][0]})
-	for k in v_symbolToValue:
-		symbolsV.update({k:v_symbolToValue[k][0]})
-
-	sym = []
-	sym.append(symbolsY, y_valueToSymbol)
-	sym.append(symbolsU, u_valueToSymbol)
-	sym.append(symbolsV, v_valueToSymbol)
-
-	m = []
-	m.append(m_y)
-	m.append(m_u)
-	m.append(m_v)
-
-	encodeValues(outputFile, header, values, sym, m)
-
-def encodeValues(fname,header,values, sym, m_list):
-	f = open(fname, 'wb')
-	f.write(header)
-	
+def encodeValues(fhandler,values, sym, m_list):
 	# Writing metadata
 	metadata = {}
 	for ch in range(len(sym)):
@@ -135,9 +85,9 @@ def encodeValues(fname,header,values, sym, m_list):
 		
 	from pickle import dumps
 	metadata = dumps(metadata) # bytes
-	f.write(metadata)
+	fhandler.write(metadata)
 
-	f.write("\nData\n")
+	fhandler.write(b"\nDATA\n")
 
 	for ch in range(len(values)):
 		_,valueToSymbol = sym[ch]
@@ -145,10 +95,11 @@ def encodeValues(fname,header,values, sym, m_list):
 		m = m_list[ch]
 		c = int(math.ceil(math.log(m,2)))
 		div = int(math.pow(2,c) - m)
-		golomb_result = b""
+		golomb_result = ""
 		for val in vals:
 			val = valueToSymbol[val]
 			golomb_result += Golomb.to_golomb(val, m, c, div)
+		fhandler.write(golomb_result.encode("utf-8"))
 		
 
 def processFrame(height,width,frame,ID,shared_dict):
@@ -172,14 +123,6 @@ def pixel_iteration_slow(height,width,frame):
 			overalls[1].append(diff_u)
 			overalls[2].append(diff_v)
 	return overalls
-
-def writeFrame(file_handler, outFrame, m):
-	file_handler.write(b'FRAME\n')
-	y,u,v = VideoCaptureYUV.split_frame(outFrame)
-	outFrame_bytes = y.tobytes()+u.tobytes()+v.tobytes()
-
-	
-	file_handler.write(outFrame_bytes)
 
 def predictor(frame,pos_h,pos_w):
 	if pos_w-1>=0:
@@ -211,6 +154,74 @@ def _nonLinearPredictor(a,b,c):
 		return max(a,b)
 	else:
 		return a+b-c
+
+def dumpFrames(shared_dict, handler, threshold = 50):
+	if len(shared_dict)<threshold:
+		return
+	
+	y_overall = []
+	u_overall = []
+	v_overall = []
+	for frame in shared_dict.keys():
+		y,u,v = shared_dict[frame]
+		y_overall += y
+		u_overall += u
+		v_overall += v
+
+	shared_dict.clear()
+
+	values = (y_overall,u_overall,v_overall)
+
+	processes = []
+	m_proc = []
+	symbolToValue_proc = []
+	valueToSymbol_proc = []
+	mgr = Manager()
+	
+	for v in values:
+		m = Value('d',0.0)
+		symbolToValue = mgr.dict()
+		valueToSymbol = mgr.dict()
+		processes.append(Process(target=processChannel,args=(shared_dict,v,m,symbolToValue,valueToSymbol)))
+		m_proc.append(m)
+		symbolToValue_proc.append(symbolToValue)
+		valueToSymbol_proc.append(valueToSymbol)
+	
+	for p in processes:
+		p.start()
+	for p in processes:
+		p.join()
+
+	sym = []
+	m = []
+	for i in range(len(symbolToValue_proc)):
+		s = {}
+		# Removing probabilities from symbolToValue map. valueToSymbol already doesn't have them.
+		for k in symbolToValue_proc[i]:
+			s.update({k:symbolToValue_proc[i][k][0]})
+		sym.append((s,valueToSymbol_proc[i]))
+		m.append(m_proc[i])
+
+	encodeValues(handler, values, sym, m)
+
+def processChannel(shared_dict, overall,return_m,return_symbolToValue,return_ValueToSymbol):
+	#### Find best 'm' for every value in each overall
+	# Calculate probabilty of each sample value after predictor is applied
+	sample_probability = GolombEst.prob(overall)
+	
+	# Map symbols to sample values according to probability
+	#{ symbol: (value, probability)}
+	symbolToValue, valueToSymbol  = GolombEst.map_symbols(sample_probability)
+
+	# Find best Golomb Parameters
+	alpha, m = GolombEst.findBestGolomb(symbolToValue,False)
+
+	# Return to shared variables
+	return_m.value = m
+	for k in symbolToValue:
+		return_symbolToValue[k] = symbolToValue[k]
+	for k in valueToSymbol:
+		return_valueToSymbol[k] = valueToSymbol[k]
 
 def decode(inputFile, outputFile):
 	return 0

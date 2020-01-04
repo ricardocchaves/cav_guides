@@ -68,10 +68,10 @@ def encode(inputFile, outputFile):
 				print("\033[A\033[A Shared dict: {} frames, {} MB ".format(len(shared_dict),shared_dict_size))
 				time.sleep(0.2)
 
-			p = Process(target=processFrame,args=(cap.height,cap.width,frame,cnt,shared_dict))
+			p = Process(target=processFrame,args=(frame,cnt,shared_dict))
 			p.start()
 			pbar.update(1)
-			
+
 			processes[currentProcess] = p
 			cnt += 1
 			currentProcess += 1
@@ -80,7 +80,7 @@ def encode(inputFile, outputFile):
 	#writeFrames(shared_dict,output)
 	dumpFrames(shared_dict,output,0)
 
-def processFrame(height,width,frame,ID,shared_dict):
+def processFrame(frame,ID,shared_dict):
 	#y_overall, u_overall, v_overall = pixel_iteration_slow(height,width,frame)
 	#y_overall,u_overall,v_overall = pixel_iteration_fast(height,width,frame)
 	"""
@@ -91,7 +91,10 @@ def processFrame(height,width,frame,ID,shared_dict):
 	v_overall = overalls[l*2:]
 	"""
 	# Add y,u,v overall to globalOverall (y,u and v) dict/list in the frame position
-	y_overall,u_overall,v_overall = pixel_iteration_np(frame,width,height)
+	#y_overall,u_overall,v_overall = pixel_iteration_np(frame,width,height)
+	y_overall = pixel_iteration_np(frame.getMatrix(0),frame.width,frame.height)
+	u_overall = pixel_iteration_np(frame.getMatrix(1),frame.width_chroma,frame.height_chroma)
+	v_overall = pixel_iteration_np(frame.getMatrix(2),frame.width_chroma,frame.height_chroma)
 	#overall = pixel_iteration_np(frame,width,height)
 	shared_dict[ID] = (y_overall.flatten().tolist(),u_overall.flatten().tolist(),v_overall.flatten().tolist())
 	#shared_dict[ID] = overall
@@ -106,7 +109,7 @@ def pixel_iteration_np(frame,width,height):
 		p = predictor_vec(x=x,y=y,frame=frame.astype(int))
 		prediction[x,y] = p
 	"""
-	
+
 	"""
 	f = frame.copy()
 	it = np.nditer(f, flags=['multi_index','c_index','reduce_ok'], op_flags=[['readonly']])
@@ -122,7 +125,7 @@ def pixel_iteration_np(frame,width,height):
 
 	predicted = predictor(frame)
 	#return frame-predicted
-	return np.dsplit(frame - predicted,3)
+	return frame - predicted
 	#y_p,u_p,v_p = np.dsplit(predicted,3)
 	#y,u,v = np.dsplit(frame,3)
 	#y_p,u_p,v_p = np.dsplit(np.apply_along_axis(predictor,3,predicted_frame),3)
@@ -132,16 +135,16 @@ def pixel_iteration_np(frame,width,height):
 def predictor(frame):
 	a = np.roll(frame,1,axis=1)
 	# 1st column of a -> zeros
-	a[:,0] = np.zeros((a.shape[0],a.shape[2]))
-	
+	a[:,0] = np.zeros((a.shape[0]))
+
 	b = np.roll(frame,1,axis=0)
 	# 1st row of b -> zeros
-	b[0] = np.zeros(b.shape[1:])
-	
+	b[0] = np.zeros(b.shape[1])
+
 	c = np.roll(frame,[1,1],axis=(0,1))
 	# 1st row and column -> zeros
-	c[:,0] = np.zeros((c.shape[0],c.shape[2]))
-	c[0] = np.zeros(c.shape[1:])
+	c[:,0] = np.zeros((c.shape[0]))
+	c[0] = np.zeros(c.shape[1])
 
 	f = np.frompyfunc(_nonLinearPredictor_np,5,1)
 	max_ab = np.maximum(a,b)
@@ -180,7 +183,7 @@ def _predictor(frame,pos_h,pos_w):
 		c = frame[pos_h-1,pos_w-1]
 	else:
 		c = (0,0,0)
-	
+
 	y_p = _nonLinearPredictor(int(a[0]),int(b[0]),int(c[0]))
 	u_p = _nonLinearPredictor(int(a[1]),int(b[1]),int(c[1]))
 	v_p = _nonLinearPredictor(int(a[2]),int(b[2]),int(c[2]))
@@ -269,7 +272,7 @@ def dumpFrames(shared_dict, handler, threshold = 50):
 	symbolToValue_proc = []
 	valueToSymbol_proc = []
 	mgr = Manager()
-	
+
 	for v in values:
 		m = Value('d',0.0)
 		symbolToValue = mgr.dict()
@@ -278,7 +281,7 @@ def dumpFrames(shared_dict, handler, threshold = 50):
 		m_proc.append(m)
 		symbolToValue_proc.append(symbolToValue)
 		valueToSymbol_proc.append(valueToSymbol)
-	
+
 	for p in processes:
 		p.start()
 	for p in processes:
@@ -294,7 +297,7 @@ def dumpFrames(shared_dict, handler, threshold = 50):
 		sym.append((s,valueToSymbol_proc[i]))
 		m.append(m_proc[i].value)
 
-	encodeValues(handler, values, sym, m)
+	#encodeValues(handler, values, sym, m)
 
 def encodeValues(fhandler,values, sym, m_list):
 	# Writing metadata
@@ -302,7 +305,7 @@ def encodeValues(fhandler,values, sym, m_list):
 	for ch in range(len(sym)):
 		symbolToValue,_ = sym[ch]
 		metadata[ch] = symbolToValue
-		
+
 	from pickle import dumps
 	metadata = dumps(metadata) # bytes
 	fhandler.write(metadata)
@@ -332,7 +335,7 @@ def encodeValues(fhandler,values, sym, m_list):
 		golomb_vect = np.vectorize(Golomb.to_golomb_fast,excluded=['m','c','div'])
 		golomb_result = golomb_vect(val=symbols,m=m,c=c,div=div).tolist()
 		print("Golomb vectorized: {:.2f}".format(time.time()-s))
-		
+
 		s = time.time()
 		for i in range(len(vals)):
 
@@ -354,7 +357,7 @@ def processChannel(overall,return_m,return_symbolToValue,return_valueToSymbol):
 	#### Find best 'm' for every value in each overall
 	# Calculate probabilty of each sample value after predictor is applied
 	sample_probability = GolombEst.prob(overall)
-	
+
 	# Map symbols to sample values according to probability
 	#{ symbol: (value, probability)}
 	symbolToValue, valueToSymbol  = GolombEst.map_symbols(sample_probability)

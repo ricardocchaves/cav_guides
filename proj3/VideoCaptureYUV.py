@@ -6,16 +6,6 @@ class VideoCaptureYUV:
 		self.f = open(filename, 'rb')
 		self.header = self.f.readline().decode("utf-8")
 
-		# Reading COLOR SPACE from filename (not always inside file)
-		if "444" in filename:
-			self.color_format = "444"
-		elif "422" in filename:
-			self.color_format = "422"
-		elif "420" in filename:
-			self.color_format = "420"
-		else:
-			raise Exception("Couldn't find color space! Must be in file name")
-		
 		# Reading WIDTH from file
 		w_start = self.header.find("W")
 		w_end = self.header.find(" ",w_start)
@@ -26,12 +16,28 @@ class VideoCaptureYUV:
 		h_end = self.header.find(" ",h_start)
 		self.height = int(self.header[h_start+1:h_end])
 
+		# Reading COLOR SPACE from filename (not always inside file)
+		if "444" in filename:
+			self.color_format = "444"
+			self.width_chroma = self.width
+			self.height_chroma = self.height
+		elif "422" in filename:
+			self.color_format = "422"
+			self.width_chroma = self.width / 2
+			self.height_chroma = self.height
+		elif "420" in filename:
+			self.color_format = "420"
+			self.width_chroma = self.width // 2
+			self.height_chroma = self.height // 2
+		else:
+			raise Exception("Couldn't find color space! Must be in file name")
+
 		if self.color_format == "420":
 			self.frame_len = self.width * self.height * 3 // 2
-			self.shape = (int(self.height*3/2), self.width)
+			self.shape = (self.height, self.width, 3)
 		elif self.color_format == "422":
 			self.frame_len = self.width * self.height * 2
-			self.shape = (self.height, self.width, 2)
+			self.shape = (self.height, self.width, 3)
 		else: #444
 			self.frame_len = self.width * self.height * 3
 			self.shape = (self.height, self.width, 3)
@@ -44,16 +50,25 @@ class VideoCaptureYUV:
 			return False, None
 		#cnt = len(raw)//3
 		#cnt = self.width*self.height
-		prod = 1
-		for v in self.shape:
-			prod *= v
-		cnt = prod//3
-		y = np.frombuffer(raw, dtype=np.uint8, count=cnt)
-		u = np.frombuffer(raw, dtype=np.uint8, count=cnt, offset=cnt)
-		v = np.frombuffer(raw, dtype=np.uint8, count=cnt, offset=cnt*2)
-		yuv = np.dstack([y,u,v])[0]
-		yuv = yuv.reshape(self.shape)
-		return True, yuv
+		# if self.color_format == "444":
+		# 	prod = 1
+		# 	for v in self.shape:
+		# 		prod *= v
+		# 	cnt = prod//3
+		# 	y = np.frombuffer(raw, dtype=np.uint8, count=cnt)
+		# 	u = np.frombuffer(raw, dtype=np.uint8, count=cnt, offset=cnt)
+		# 	v = np.frombuffer(raw, dtype=np.uint8, count=cnt, offset=cnt*2)
+		# 	yuv = np.dstack([y,u,v])[0]
+		# 	yuv = yuv.reshape(self.shape)
+		# 	return True, yuv
+		# else:
+		cnt = self.width*self.height
+		cnt_chroma = self.width_chroma*self.height_chroma
+		y = np.frombuffer(raw, dtype=np.uint8, count= cnt)
+		u = np.frombuffer(raw, dtype=np.uint8, count=cnt_chroma, offset=cnt)
+		v = np.frombuffer(raw, dtype=np.uint8, count=cnt_chroma, offset=cnt+cnt_chroma)
+		frame = Frame(y,u,v, self.height, self.height_chroma, self.width, self.width_chroma)
+		return True, frame
 
 	def read(self):
 		ret, yuv = self.read_raw()
@@ -70,3 +85,32 @@ class VideoCaptureYUV:
 		yuv = frame.reshape((frame.shape[0]*frame.shape[1],3))
 		y,u,v = yuv.transpose()
 		return y,u,v
+
+
+class Frame:
+	def __init__(self, y, u, v, height, height_chroma, width, width_chroma):
+		self.y = y
+		self.u = u
+		self.v = v
+		self.height = height
+		self.height_chroma = height_chroma
+		self.width = width
+		self.width_chroma = width_chroma
+
+	def get(self, height, width, color=None):
+		if color == None:
+			return[self.y[height*self.height + width],self.u[height*self.height_chroma + width],self.v[height*self.height_chroma + width]]
+		elif color == 0:
+			return self.y[height*self.height + width]
+		elif color == 1:
+			return self.u[height*self.height_chroma + width]
+		elif color == 2:
+			return self.v[height*self.height_chroma + width]
+
+	def getMatrix(self, color):
+		if color == 0:
+			return self.y.reshape((self.height, self.width))
+		elif color == 1:
+			return self.u.reshape((self.height_chroma, self.width_chroma))
+		elif color == 2:
+			return self.v.reshape((self.height_chroma, self.width_chroma))

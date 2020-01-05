@@ -1,6 +1,7 @@
 import cv2 as cv
 import numpy as np
 
+# Video Capture Class. Only supports 4:2:0, 4:2:2 and 4:4:4 chroma subsampling formats
 class VideoCaptureYUV:
 	def __init__(self, filename):
 		self.f = open(filename, 'rb')
@@ -16,21 +17,33 @@ class VideoCaptureYUV:
 		h_end = self.header.find(" ",h_start)
 		self.height = int(self.header[h_start+1:h_end])
 
-		# Reading COLOR SPACE from filename (not always inside file)
-		if "444" in filename:
+		# Reading COLOR SPACE from file
+		# https://linux.die.net/man/5/yuv4mpeg
+		"""
+		420jpeg  - 4:2:0 with JPEG/MPEG-1 siting (default)
+		422      - 4:2:2, cosited
+		444      - 4:4:4 (no subsampling)
+		"""
+		c_start = self.header.find("C")
+		if c_start>0:
+			c_end = self.header.find(" ",c_start)
+			color = self.header[c_start+1:c_end]
+		else:
+			color = "420"
+		if "444" in color:
 			self.color_format = "444"
 			self.width_chroma = self.width
 			self.height_chroma = self.height
-		elif "422" in filename:
+		elif "422" in color:
 			self.color_format = "422"
 			self.width_chroma = self.width / 2
 			self.height_chroma = self.height
-		elif "420" in filename:
+		elif "420" in color:
 			self.color_format = "420"
 			self.width_chroma = self.width // 2
 			self.height_chroma = self.height // 2
 		else:
-			raise Exception("Couldn't find color space! Must be in file name")
+			raise Exception("Incompatible color space!")
 
 		if self.color_format == "420":
 			self.frame_len = self.width * self.height * 3 // 2

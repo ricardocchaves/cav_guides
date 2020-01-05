@@ -15,6 +15,7 @@ from proj2.Golomb import Golomb
 import proj2.encode as GolombEst
 
 from GolombFast import GolombFast
+from golomb_cython import GolombFast_cython as GolombCython
 
 def main():
 	if(len(sys.argv) <= 3):
@@ -297,7 +298,7 @@ def dumpFrames(shared_dict, handler, threshold = 50):
 		sym.append((s,valueToSymbol_proc[i]))
 		m.append(m_proc[i].value)
 
-	#encodeValues(handler, values, sym, m)
+	encodeValues(handler, values, sym, m)
 
 def encodeValues(fhandler,values, sym, m_list):
 	# Writing metadata
@@ -321,12 +322,9 @@ def encodeValues(fhandler,values, sym, m_list):
 		div = int(math.pow(2,c) - m)
 		#golomb_result = ""
 		#golomb_result = []
-		#print("Starting golomb")
-		#s = time.time()
-		golomb = GolombFast(m,c,div)
+		golomb = GolombCython(m,c,div)
 		for v in vals:
 			golomb.toGolomb(valueToSymbol[v])
-		#print("Time: {}".format(time.time()-s))
 		"""
 		s = time.time()
 		symbols = np.array([valueToSymbol[v] for v in vals])

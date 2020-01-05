@@ -50,6 +50,46 @@ class GolombFast():
 
 if __name__ == "__main__":
 	import time
+
+	g = GolombFast(2,2,2)
+	#N = 47923200
+	N = 10000000
+
+	print("## Using LIST OF BYTES")
+	print("Starting {} golomb...".format(N))
+	s = time.time()
+	for i in range(N):
+		g.toGolomb(9)
+	t = time.time()-s
+	print("Finished: {:.2f}s. {}/s".format(t,N//t))
+
+	print("Starting conversion to bytes...")
+	s = time.time()
+	b = g.getBytes()
+	#print(len(b))
+	#print("{}...".format(bin(int.from_bytes(b[:4],'big'))))
+	t = time.time()-s
+	print("Finished: {:.2f}s.".format(t))
+
+	print("## Using CYTHON")
+	from golomb_cython import GolombFast_cython
+	g = GolombFast_cython(2,2,2)
+	print("Starting {} golomb...".format(N))
+	s = time.time()
+	for i in range(N):
+		g.toGolomb(9)
+	t = time.time()-s
+	print("Finished: {:.2f}s. {}/s".format(t,N//t))
+
+	print("Starting conversion to bytes...")
+	s = time.time()
+	b = g.getBytes()
+	#print(len(b))
+	#print("{}...".format(bin(int.from_bytes(b[:4],'big'))))
+	t = time.time()-s
+	print("Finished: {:.2f}s.".format(t))
+
+	"""
 	def to_golomb_fast(val,m,c,div):
 		r = val % m
 		q =int(math.floor(val / m))
@@ -63,28 +103,7 @@ if __name__ == "__main__":
 			binary = binary_repr(r,width=b)
 
 		return int(unary+"0"+binary,2)
-
-	g = GolombFast(2,2,2)
-	N = 1000000
-
-	print("## Using LIST OF BYTES")
-	print("Starting {} golomb...".format(N))
-	s = time.time()
-	for i in range(N):
-		g.toGolomb(9)
-	t = time.time()-s
-	print("Finished: {:.2f}s. {}/s".format(t,N//t))
-
-	print("Starting conversion to bytes...")
-	s = time.time()
-	print(g.buffer[:10])
-	b = g.getBytes()
-	print(len(b))
-	print("{}...".format(b[:15]))
-	t = time.time()-s
-	print("Finished: {:.2f}s.".format(t))
-
-	
+		
 	print("\n## Using STRING")
 	print("Starting {} golomb...".format(N))
 	s = time.time()
@@ -98,8 +117,7 @@ if __name__ == "__main__":
 	s = time.time()
 	#b = ''.join(buf).encode('utf-8')
 	b = bytes(buf)
-	print(buf[:10])
-	print(len(b))
-	print("{}...".format(b[:15]))
+	print("{}...".format(bin(int.from_bytes(b[:4],'big'))))
 	t = time.time()-s
 	print("Finished: {:.2f}s.".format(t))
+	"""

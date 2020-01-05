@@ -31,33 +31,37 @@ def main():
     print(cap.height)
     print(cap.width)
     print(type(frame))
-    motion_vectors_to_encode, residual_diffs = inter_frame_processing(cap.height,cap.width,frame, ref_frame, N, offset)
+    print(cap.height_chroma)
+    print(cap.width_chroma)
+    motion_vectors_to_encode, residual_diffs = inter_frame_processing(cap.height,cap.width,cap.height_chroma,cap.width_chroma,frame, ref_frame, N, offset)
     
-    decoded_frame = decode_inter_frame2(cap.height,cap.width,ref_frame,N, motion_vectors_to_encode, residual_diffs)
+    decoded_frame = decode_inter_frame2(cap.height,cap.width,cap.height_chroma,cap.width_chroma,ref_frame,N, motion_vectors_to_encode, residual_diffs)
     
     print("----")
     x= 556
     y= 23
+    
+    frame_ch = frame.getMatrix(1)
     print(decoded_frame[y,x,1])
-    print(frame[y,x,1])
+    print(frame_ch[y,x])
     print("----")
     print("----")
-    x= 1222
+    x= 234
     y= 49
     print(decoded_frame[y,x,1])
-    print(frame[y,x,1])
+    print(frame_ch[y,x])
     print("----")
     print("----")
-    x= 395
-    y= 678
+    x= 624
+    y= 309
     print(decoded_frame[y,x,1])
-    print(frame[y,x,1])
+    print(frame_ch[y,x])
     print("----")
     print("----")
     x= 10
     y= 10
     print(decoded_frame[y,x,1])
-    print(frame[y,x,1])
+    print(frame_ch[y,x])
     print("----")
     
  
@@ -106,39 +110,65 @@ def decode_inter_frame(height,width,ref_frame, N, motion_vectors, residual_diffs
     return frame
 
 
-def decode_inter_frame2(height,width,ref_frame, N, motion_vectors, residual_diffs):
+def decode_inter_frame2(height,width,height_chroma,width_chroma,ref_frame, N, motion_vectors, residual_diffs):
 
     #frame = ref_frame #TODO: change to create new np array
-    frame = np.ndarray(shape=(height,width,3))
+    frame = np.ndarray(shape=(height,width,3),dtype=np.uint8)
 
     for cblock_x in tqdm(range(0,width//N)):
         for cblock_y in range(0,height//N):
-        
-            #get upper left pixel of this block
+            
+            #get luma to chroma block size ratio
+            chroma_height_ratio = height/height_chroma
+            chroma_width_ratio = width/width_chroma
+            chroma_block_height = int(N//chroma_height_ratio)
+            chroma_block_width = int(N//chroma_width_ratio)
+            
+            #get upper left pixel of this block for luma 
             block_pixel_upper_left_x = cblock_x * N
             block_pixel_upper_left_y = cblock_y * N
+            #get upper left pixel of this block for chroma 
+            chroma_block_pixel_upper_left_x = cblock_x * chroma_block_width
+            chroma_block_pixel_upper_left_y = cblock_y * chroma_block_height
         
             #get reference block using MV
             ref_block_x = cblock_x + motion_vectors[cblock_x,cblock_y][0] #mv.x
             ref_block_y = cblock_y + motion_vectors[cblock_x,cblock_y][1] #mv.y
-            #get upper left pixel of this reference block
+
+            #get upper left pixel of this reference block for luma
             ref_block_pixel_upper_left_x = ref_block_x * N
             ref_block_pixel_upper_left_y = ref_block_y * N
+            #get upper left pixel of this reference block for chroma
+            ref_chroma_block_pixel_upper_left_x = ref_block_x * chroma_block_width
+            ref_chroma_block_pixel_upper_left_y = ref_block_y * chroma_block_height
             
             for channel in range(0,3):
-                #get block from ref frame
-                ref_block = ref_frame[ref_block_pixel_upper_left_y:ref_block_pixel_upper_left_y + N, ref_block_pixel_upper_left_x:ref_block_pixel_upper_left_x + N, channel]
-           
-                #get residuals for this block (matrix N*N with residuals)
-                block_residuals = residual_diffs[cblock_x,cblock_y,channel]
+                if channel == 0:
+                    #Luma blocks
+                    #get block from ref frame
+                    ref_block = ref_frame.getMatrix(channel)[ref_block_pixel_upper_left_y:ref_block_pixel_upper_left_y + N, ref_block_pixel_upper_left_x:ref_block_pixel_upper_left_x + N]
             
-                #Compute frame block
-                frame[block_pixel_upper_left_y:block_pixel_upper_left_y+N, block_pixel_upper_left_x:block_pixel_upper_left_x + N, channel] = \
-                    ref_block + block_residuals
+                    #get residuals for this block (matrix N*N with residuals)
+                    block_residuals = residual_diffs[cblock_x,cblock_y,channel]
+                
+                    #Compute frame block
+                    frame[block_pixel_upper_left_y:block_pixel_upper_left_y+N, block_pixel_upper_left_x:block_pixel_upper_left_x + N, channel] = \
+                        ref_block + block_residuals
+                else:
+                    #chroma blocks
+                    #get block from ref frame
+                    ref_block = ref_frame.getMatrix(channel)[ref_chroma_block_pixel_upper_left_y:ref_chroma_block_pixel_upper_left_y + chroma_block_height, ref_chroma_block_pixel_upper_left_x:ref_chroma_block_pixel_upper_left_x + chroma_block_width]
+            
+                    #get residuals for this block (matrix N*N with residuals)
+                    block_residuals = residual_diffs[cblock_x,cblock_y,channel]
+                
+                    #Compute frame block
+                    frame[chroma_block_pixel_upper_left_y:chroma_block_pixel_upper_left_y+chroma_block_height, chroma_block_pixel_upper_left_x:chroma_block_pixel_upper_left_x + chroma_block_width, channel] = \
+                        ref_block + block_residuals
 
     return frame                 
 
-def inter_frame_processing(height, width, frame, ref_frame, N, offset):
+def inter_frame_processing(height, width, height_chroma, width_chroma, frame, ref_frame, N, offset):
     if not ((N != 0) and (N & (N-1) == 0)):
         print("N is not power of 2")
         return -1
@@ -149,11 +179,11 @@ def inter_frame_processing(height, width, frame, ref_frame, N, offset):
     for cblock_x in tqdm(range(0,width//N)):
         for cblock_y in range(0,height//N):
             #for channel in range(0,3):
-                
+            
             #get current block
             cbx_pixel_upper_left = cblock_x * N
             cby_pixel_upper_left = cblock_y * N
-            frame_block = frame[cby_pixel_upper_left:cby_pixel_upper_left+N, cbx_pixel_upper_left:cbx_pixel_upper_left + N, 0]
+            frame_block = frame.getMatrix(0)[cby_pixel_upper_left:cby_pixel_upper_left+N, cbx_pixel_upper_left:cbx_pixel_upper_left + N]
 
             #find best block for each channel
             diff = 0
@@ -172,7 +202,7 @@ def inter_frame_processing(height, width, frame, ref_frame, N, offset):
                         #Get candidate reference block
                         bx_pixel_upper_left = bx * N
                         by_pixel_upper_left = by * N
-                        ref_block = ref_frame[by_pixel_upper_left:by_pixel_upper_left + N, bx_pixel_upper_left:bx_pixel_upper_left + N, 0]
+                        ref_block = ref_frame.getMatrix(0)[by_pixel_upper_left:by_pixel_upper_left + N, bx_pixel_upper_left:bx_pixel_upper_left + N]
 
                         #Check if it is the best one
                         diff_block = frame_block - ref_block
@@ -194,12 +224,20 @@ def inter_frame_processing(height, width, frame, ref_frame, N, offset):
             motion_vectors_to_encode[cblock_x,cblock_y] = (motion_vector_x,motion_vector_y)
             residual_diffs[cblock_x,cblock_y,0]  = best_diff_block
 
-            for channel in range(1,3):
-                frame_block = frame[cby_pixel_upper_left:cby_pixel_upper_left+N, cbx_pixel_upper_left:cbx_pixel_upper_left + N, channel]
 
-                ref_bx_pixel_upper_left = best_block_x * N
-                ref_by_pixel_upper_left = best_block_y * N        
-                ref_block = ref_frame[ref_by_pixel_upper_left:ref_by_pixel_upper_left + N, ref_bx_pixel_upper_left:ref_bx_pixel_upper_left + N, channel]
+            chroma_height_ratio = height/height_chroma
+            chroma_width_ratio = width/width_chroma
+
+            chroma_block_height = int(N//chroma_height_ratio)
+            chroma_block_width = int(N//chroma_width_ratio)
+            for channel in range(1,3):
+                cbx_pixel_upper_left = cblock_x * chroma_block_width
+                cby_pixel_upper_left = cblock_y * chroma_block_height
+                frame_block = frame.getMatrix(channel)[cby_pixel_upper_left:cby_pixel_upper_left+chroma_block_height, cbx_pixel_upper_left:cbx_pixel_upper_left + chroma_block_width]
+                
+                ref_bx_pixel_upper_left = best_block_x * chroma_block_width
+                ref_by_pixel_upper_left = best_block_y * chroma_block_height
+                ref_block = ref_frame.getMatrix(channel)[ref_by_pixel_upper_left:ref_by_pixel_upper_left + chroma_block_height, ref_bx_pixel_upper_left:ref_bx_pixel_upper_left + chroma_block_width]
 
                 diff_block_ch = frame_block - ref_block
                 residual_diffs[cblock_x,cblock_y,channel] = diff_block_ch 

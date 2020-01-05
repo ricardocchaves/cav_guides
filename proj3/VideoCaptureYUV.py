@@ -34,26 +34,22 @@ class VideoCaptureYUV:
 			self.color_format = "444"
 			self.width_chroma = self.width
 			self.height_chroma = self.height
+			self.frame_len = self.width * self.height * 3
+			self.shape = (self.height, self.width, 3)
 		elif "422" in color:
 			self.color_format = "422"
 			self.width_chroma = self.width / 2
 			self.height_chroma = self.height
+			self.frame_len = self.width * self.height * 2
+			self.shape = (self.height, self.width, 3)
 		elif "420" in color:
 			self.color_format = "420"
 			self.width_chroma = self.width // 2
 			self.height_chroma = self.height // 2
-		else:
-			raise Exception("Incompatible color space!")
-
-		if self.color_format == "420":
 			self.frame_len = self.width * self.height * 3 // 2
 			self.shape = (self.height, self.width, 3)
-		elif self.color_format == "422":
-			self.frame_len = self.width * self.height * 2
-			self.shape = (self.height, self.width, 3)
-		else: #444
-			self.frame_len = self.width * self.height * 3
-			self.shape = (self.height, self.width, 3)
+		else:
+			raise Exception("Incompatible color space!")
 
 		self.f.readline() # Advancing to start of 1st frame
 
@@ -61,20 +57,7 @@ class VideoCaptureYUV:
 		raw = self.f.read(self.frame_len)
 		if len(raw) != self.frame_len:
 			return False, None
-		#cnt = len(raw)//3
-		#cnt = self.width*self.height
-		# if self.color_format == "444":
-		# 	prod = 1
-		# 	for v in self.shape:
-		# 		prod *= v
-		# 	cnt = prod//3
-		# 	y = np.frombuffer(raw, dtype=np.uint8, count=cnt)
-		# 	u = np.frombuffer(raw, dtype=np.uint8, count=cnt, offset=cnt)
-		# 	v = np.frombuffer(raw, dtype=np.uint8, count=cnt, offset=cnt*2)
-		# 	yuv = np.dstack([y,u,v])[0]
-		# 	yuv = yuv.reshape(self.shape)
-		# 	return True, yuv
-		# else:
+		
 		cnt = self.width*self.height
 		cnt_chroma = self.width_chroma*self.height_chroma
 		y = np.frombuffer(raw, dtype=np.uint8, count= cnt)
@@ -82,16 +65,6 @@ class VideoCaptureYUV:
 		v = np.frombuffer(raw, dtype=np.uint8, count=cnt_chroma, offset=cnt+cnt_chroma)
 		frame = Frame(y,u,v, self.height, self.height_chroma, self.width, self.width_chroma)
 		return True, frame
-
-	def read(self):
-		ret, yuv = self.read_raw()
-		if self.color_format == "420":
-			bgr = cv.cvtColor(yuv, cv.COLOR_YUV2BGR_NV12)
-		elif self.color_format == "422":
-			bgr = cv.cvtColor(yuv, cv.COLOR_YUV2BGR_NV21)
-		else: #444
-			bgr = cv.cvtColor(yuv, cv.COLOR_YUV2BGR_NV21)
-		return ret, bgr
 
 	@staticmethod
 	def split_frame(frame):

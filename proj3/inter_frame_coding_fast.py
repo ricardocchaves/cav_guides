@@ -26,17 +26,77 @@ def main():
     if not ret:
         input("NOT RET 2")
 
-    N = 8
-    offset = 2
     print(cap.height)
     print(cap.width)
     print(type(frame))
     print(cap.height_chroma)
     print(cap.width_chroma)
+    
+    #############################################################################################
+    #ENCODE
+
+    #########1##########
+    #get frame to encode and corresponant reference frame
+    #frame e ref_frame
+    
+    #########2##########
+    #choose encoding parameters and encode
+    N = 8 #size of block (N*N) on luma
+    offset = 2 #radius of the neighbourhood for reference block search
+    
     motion_vectors_to_encode, residual_diffs = inter_frame_processing(cap.height,cap.width,cap.height_chroma,cap.width_chroma,frame, ref_frame, N, offset)
+
+    #print(motion_vectors_to_encode)
+    #motion_vectors_to_encode[x,y] = (vector_x,vector_y) -> tuplo representa MV = (vec_x,vec_y) para um bloco x,y
+    #dicionario -> { (block_x,block_y) : (vec_x,vec_y), (block_x,block_y) : (vec_x,vec_y),...}
+
+    #print(residual_diffs[0,0,0])
+    #residual_diffs[cblock_x,cblock_y,channel] = matriz das diferenças de um bloco
     
-    decoded_frame = decode_inter_frame2(cap.height,cap.width,cap.height_chroma,cap.width_chroma,ref_frame,N, motion_vectors_to_encode, residual_diffs)
+    #print(motion_vectors_to_encode[2,3])
+    #print(residual_diffs[2,3,1])
+
+    #########3##########
+    #tranform motion vectors and residuals to lists of numbers to encode with golomb
+    values_to_encode = dict()
+    frame_num = 0
+
+        #transform MV
+    mv_aslist = mv_tolist(motion_vectors_to_encode)
+
+        #transform residuals
+    residuals_aslist = residual_diffs_tolist(residual_diffs,cap.height,cap.width,N)
+
+        #save both on values to encode data structure
+    values_to_encode[frame_num] = (mv_aslist,residuals_aslist)
     
+    #apply golomb and end frame encoding
+    #######################################################################################
+    
+    #DECODE
+
+    #########1##########
+    #read values from golomb
+    mv_aslist,residuals_aslist = values_to_encode[frame_num]
+
+    #########2##########
+    #convert MV list back to the usual dictionary of motion_vectors[block_x,block_y]
+    mv_to_decode = mv_fromlist(mv_aslist,cap.height,cap.width,N)
+
+    #convert resuduals list back to the usual dictionary of residual_diff[block_x,block_y,channel]
+    residuals_to_decode = residuals_fromlist(residuals_aslist,cap.height,cap.width,cap.height_chroma, cap.width_chroma,N)
+
+    #print(mv_to_decode[2,3])
+    #print(residuals_to_decode[2,3,1])
+    
+    #########3##########
+    #retrieve frame using the converted dictionaries
+    decoded_frame = decode_inter_frame2(cap.height,cap.width,cap.height_chroma,cap.width_chroma,ref_frame,N, mv_to_decode, residuals_to_decode)
+    
+    #END of decoding
+    #################################################################################################################################################
+
+    #Just random testing
     print("----")
     x= 556
     y= 23
@@ -64,7 +124,63 @@ def main():
     print(frame_ch[y,x])
     print("----")
     
+def mv_tolist(motion_vectors):
+    mv_aslist = list(sum(motion_vectors.values(), ()))
+    #print(mv_aslist)
+    return mv_aslist
+
+def mv_fromlist(motion_vectors, height,width,N):
+    x = True
+    x_value = 0
+    y_value = 0
+    mv_result = {}
+    i = 0
+    for cblock_x in tqdm(range(0,width//N)):
+        for cblock_y in range(0,height//N):
+            x_value = motion_vectors[i]
+            y_value = motion_vectors[i+1]
+            mv_result[cblock_x,cblock_y] = (x_value,y_value)
+            i += 2
  
+    return mv_result
+
+
+def residual_diffs_tolist(residual_diffs,height,width,N):
+    residuals_aslist = []
+    for cblock_x in tqdm(range(0,width//N)):
+        for cblock_y in range(0,height//N):
+            for channel in range(0,3):
+
+                diff_block = residual_diffs[cblock_x,cblock_y,channel]
+                residuals_aslist += list(diff_block.flatten())
+        
+    #print(residuals_aslist)
+    return residuals_aslist
+
+def residuals_fromlist(residuals,height,width,height_chroma,width_chroma,N):
+    i = 0
+    residuals_result = {}
+    for cblock_x in tqdm(range(0,width//N)):
+        for cblock_y in range(0,height//N):
+            for channel in range(0,3):
+
+                if channel == 0:
+                    block_size_x = N
+                    block_size_y = N
+                else:
+                    chroma_height_ratio = height/height_chroma
+                    chroma_width_ratio = width/width_chroma
+                    block_size_x = int(N//chroma_height_ratio)
+                    block_size_y = int(N//chroma_width_ratio)
+
+                block_residuals = np.asarray(residuals[i:i+block_size_x*block_size_y])
+                residuals_result[cblock_x,cblock_y,channel] =  block_residuals.reshape((block_size_x,block_size_y))
+                i = i + block_size_x*block_size_y
+    
+    return residuals_result
+
+        
+
 def decode_inter_frame(height,width,ref_frame, N, motion_vectors, residual_diffs):
 
     frame = np.ndarray(shape=(height,width)) #TODO: change to create new np array

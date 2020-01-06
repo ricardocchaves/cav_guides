@@ -11,11 +11,11 @@ from VideoCaptureYUV import VideoCaptureYUV
 import sys
 sys.path.append('..') # Making the other packages in the repository visible.
 
-from proj2.Golomb import Golomb
 import proj2.encode as GolombEst
 
 from GolombFast import GolombFast
-from golomb_cython import GolombFast_cython as GolombCython
+from golomb_cython import GolombCython
+from golomb_cython import ReadGolomb
 
 def main():
 	if(len(sys.argv) <= 3):
@@ -59,10 +59,6 @@ def encode(inputFile, outputFile):
 				currentProcess = 0
 
 				dumpFrames(shared_dict,output)
-				"""
-				if len(shared_dict.keys())>60:
-					writeFrames(shared_dict,output)
-				"""
 
 				shared_dict_size = len(shared_dict)*3*cap.width*cap.height//(1024*1024)
 
@@ -78,61 +74,22 @@ def encode(inputFile, outputFile):
 			currentProcess += 1
 		else:
 			break
-	#writeFrames(shared_dict,output)
 	dumpFrames(shared_dict,output,0)
 
 def processFrame(frame,ID,shared_dict):
-	#y_overall, u_overall, v_overall = pixel_iteration_slow(height,width,frame)
-	#y_overall,u_overall,v_overall = pixel_iteration_fast(height,width,frame)
-	"""
-	overalls = pixel_iteration_fast(height,width,frame)
-	l = len(overalls)//3
-	y_overall = overalls[:l]
-	u_overall = overalls[l:l*2]
-	v_overall = overalls[l*2:]
-	"""
 	# Add y,u,v overall to globalOverall (y,u and v) dict/list in the frame position
-	#y_overall,u_overall,v_overall = pixel_iteration_np(frame,width,height)
 	y_overall = pixel_iteration_np(frame.getMatrix(0),frame.width,frame.height)
 	u_overall = pixel_iteration_np(frame.getMatrix(1),frame.width_chroma,frame.height_chroma)
 	v_overall = pixel_iteration_np(frame.getMatrix(2),frame.width_chroma,frame.height_chroma)
-	#overall = pixel_iteration_np(frame,width,height)
+
 	shared_dict[ID] = (y_overall.flatten().tolist(),u_overall.flatten().tolist(),v_overall.flatten().tolist())
-	#shared_dict[ID] = overall
 
 def pixel_iteration_np(frame,width,height):
-	# prediction = np.zeros([height,width,3],dtype=int)
-
-	"""
-	predictor_vec = np.vectorize(predictor,excluded=['frame'])
-	x = np.arange(width).astype(int)
-	for y in range(height):
-		p = predictor_vec(x=x,y=y,frame=frame.astype(int))
-		prediction[x,y] = p
-	"""
-
-	"""
-	f = frame.copy()
-	it = np.nditer(f, flags=['multi_index','c_index','reduce_ok'], op_flags=[['readonly']])
-	while not it.finished:
-		x,y,_ = it.multi_index
-		if x >= width or y >= height:
-			it.iternext()
-			continue
-		if((prediction[x,y]==np.zeros(3)).all()):
-			prediction[x,y] = predictor(x,y,frame)
-		it.iternext()
-	"""
-
 	predicted = predictor(frame)
-	#return frame-predicted
 	return frame - predicted
-	#y_p,u_p,v_p = np.dsplit(predicted,3)
-	#y,u,v = np.dsplit(frame,3)
-	#y_p,u_p,v_p = np.dsplit(np.apply_along_axis(predictor,3,predicted_frame),3)
-	#np.apply_along_axis(f,3,frame)
-	#return [],[],[]
 
+# c | b
+# a | X
 def predictor(frame):
 	a = np.roll(frame,1,axis=1)
 	# 1st column of a -> zeros
@@ -152,44 +109,6 @@ def predictor(frame):
 	min_ab = np.minimum(a,b)
 	return f(a,b,c,max_ab,min_ab)
 
-
-def pixel_iteration_slow(height,width,frame):
-	overalls = ([],[],[]) # y,u,v
-	for h in range(height):
-		for w in range(width):
-			y,u,v = frame[h,w]
-			y_p, u_p, v_p = _predictor(frame,h,w)
-
-			diff_y = y - y_p
-			diff_u = u - u_p
-			diff_v = v - v_p
-
-			overalls[0].append(diff_y)
-			overalls[1].append(diff_u)
-			overalls[2].append(diff_v)
-	return overalls
-
-def _predictor(frame,pos_h,pos_w):
-	if pos_w-1>=0:
-		a = frame[pos_h,pos_w-1]
-	else:
-		a = (0,0,0)
-
-	if pos_h-1>=0:
-		b = frame[pos_h-1,pos_w]
-	else:
-		b = (0,0,0)
-
-	if pos_h-1>=0 and pos_w-1>=0:
-		c = frame[pos_h-1,pos_w-1]
-	else:
-		c = (0,0,0)
-
-	y_p = _nonLinearPredictor(int(a[0]),int(b[0]),int(c[0]))
-	u_p = _nonLinearPredictor(int(a[1]),int(b[1]),int(c[1]))
-	v_p = _nonLinearPredictor(int(a[2]),int(b[2]),int(c[2]))
-	return y_p,u_p,v_p
-
 def _nonLinearPredictor_np(a,b,c,maxAB,minAB):
 	if c >= maxAB:
 		return minAB
@@ -198,66 +117,13 @@ def _nonLinearPredictor_np(a,b,c,maxAB,minAB):
 	else:
 		return a+b-c
 
-# c | b
-# a | X
-def _nonLinearPredictor(a,b,c):
-	if c >= max(a,b):
-		return min(a,b)
-	elif c <= min(a,b):
-		return max(a,b)
-	else:
-		return a+b-c
-
-def writeFrames(shared_dict, handler):
-	if len(shared_dict.keys()) == 0:
-		return
-	y_overall = []
-	u_overall = []
-	v_overall = []
-	for frame in shared_dict.keys():
-		y,u,v = np.dsplit(shared_dict[frame],3)
-		y_overall += y.flatten().tolist()
-		u_overall += u.flatten().tolist()
-		v_overall += v.flatten().tolist()
-
-	shared_dict.clear()
-
-	values = (y_overall,u_overall,v_overall)
-
-	handler.write(b"\DATA\n")
-
-	for ch in range(len(values)):
-		vals = values[ch]
-		m = 8
-		c = int(math.ceil(math.log(m,2)))
-		div = int(math.pow(2,c) - m)
-
-		golomb_result = BitArray()
-
-		for v in vals:
-			if v <0:
-				g = '0'+Golomb.to_golomb_fast(abs(v), m, c, div)
-			else:
-				g = Golomb.to_golomb_fast(v, m, c, div)
-			golomb_result += BitArray(bin=g)
-
-		handler.write(golomb_result.tobytes())
-
 def dumpFrames(shared_dict, handler, threshold = 50):
 	if len(shared_dict)<threshold:
 		return
-
-	"""
-	diffs = np.empty((0,720,1280,3),int)
-	for frame in shared_dict.keys():
-		diffs = np.append(diffs,[shared_dict[frame]],axis=0)
-		shared_dict[frame] = []
-	"""
-
+	
 	y_overall = []
 	u_overall = []
 	v_overall = []
-	#np.empty((720,1280,3), int)
 	for frame in shared_dict.keys():
 		y,u,v = shared_dict[frame]
 		y_overall += y
@@ -297,15 +163,15 @@ def dumpFrames(shared_dict, handler, threshold = 50):
 			s.update({k:symbolToValue_proc[i][k][0]})
 		sym.append((s,valueToSymbol_proc[i]))
 		m.append(m_proc[i].value)
-
 	encodeValues(handler, values, sym, m)
 
 def encodeValues(fhandler,values, sym, m_list):
 	# Writing metadata
+	fhandler.write(b"\nMETA\n")
 	metadata = {}
 	for ch in range(len(sym)):
 		symbolToValue,_ = sym[ch]
-		metadata[ch] = symbolToValue
+		metadata[ch] = (m_list[ch],symbolToValue)
 
 	from pickle import dumps
 	metadata = dumps(metadata) # bytes
@@ -314,6 +180,7 @@ def encodeValues(fhandler,values, sym, m_list):
 	fhandler.write(b"\nDATA\n")
 
 	for ch in range(len(values)):
+		fhandler.write(b"CHANNEL\n")
 		_,valueToSymbol_old = sym[ch]
 		valueToSymbol = valueToSymbol_old.copy()
 		vals = values[ch]
@@ -325,31 +192,13 @@ def encodeValues(fhandler,values, sym, m_list):
 		golomb = GolombCython(m,c,div)
 		for v in vals:
 			golomb.toGolomb(valueToSymbol[v])
-		"""
-		s = time.time()
-		symbols = np.array([valueToSymbol[v] for v in vals])
-		print("Creating symbols: {:.2f}".format(time.time()-s))
-		s = time.time()
-		golomb_vect = np.vectorize(Golomb.to_golomb_fast,excluded=['m','c','div'])
-		golomb_result = golomb_vect(val=symbols,m=m,c=c,div=div).tolist()
-		print("Golomb vectorized: {:.2f}".format(time.time()-s))
 
-		s = time.time()
-		for i in range(len(vals)):
-
-			symbol = valueToSymbol[vals[i]]
-			#golomb_result += toGolomb_fast(symbol, m, c, div)
-			#golomb_result += Golomb.to_golomb(symbol, m, c, div) #14.500/s
-			g = Golomb.to_golomb_fast(symbol, m, c, div)
-			golomb_result += g
-			print(len(g))
-			sys.exit(0)
-			#print("val: {}, symbol:{}, golomb len:{}, m:{}, c:{}, div:{}".format(vals[i],symbol,len(golomb_result),m,c,div))
-		print("Golomb for loop: {:.2f}".format(time.time()-s))
-		sys.exit(0)
-		"""
-		#fhandler.write(golomb_result.encode('utf-8'))
-		fhandler.write(golomb.getBytes())
+		tmp_f = open('golomb_N_{}_M_{}'.format(len(vals),m), 'wb')
+		golomb_bytes = golomb.getBytes()
+		
+		tmp_f.write(golomb_bytes)
+		tmp_f.close()
+		fhandler.write(golomb_bytes)
 
 def processChannel(overall,return_m,return_symbolToValue,return_valueToSymbol):
 	#### Find best 'm' for every value in each overall
@@ -370,8 +219,70 @@ def processChannel(overall,return_m,return_symbolToValue,return_valueToSymbol):
 	for k in valueToSymbol:
 		return_valueToSymbol[k] = valueToSymbol[k]
 
+## Decoding Part
+
 def decode(inputFile, outputFile):
-	return 0
+	src = VideoCaptureYUV(inputFile)
+	src.f.seek(0)
+	data_raw = src.f.read() # Read everything to memory
+	isData = True
+	
+	meta_start = -1
+	meta_tag = b'\nMETA\n'
+	meta_len = len(meta_tag)
+	
+	data_start = -1
+	data_tag = b'\nDATA\n'
+	data_len = len(data_tag)
+
+	ch_start = -1
+	ch_tag = b'CHANNEL\n'
+	ch_len = len(ch_tag)
+	
+	next_meta = -1
+	next_ch = -1
+	
+	while isData:
+		# Estabilishing limits of current "batch"
+		meta_start = data_raw.find(meta_tag, meta_start+1)
+		data_start = data_raw.find(data_tag, data_start+1)
+		next_meta = data_raw.find(meta_tag, meta_start+1)
+		metadata = data_raw[meta_start+meta_len:data_start]
+		if next_meta != -1:
+			data = data_raw[data_start+data_len:next_meta]
+		else:
+			data = data_raw[data_start+data_len:]
+			isData = False
+
+		# Extracting metadata
+		from pickle import loads
+		metadata_tmp = loads(metadata) # metadata dict only has 3 keys: 0,1,2 - one per channel
+		metadata = {}
+		for ch in range(3):
+			metadata[ch]=metadata_tmp[ch]
+			del(metadata_tmp[ch])
+
+		# Extracting data
+		overalls = []
+		ch_start = -1
+		next_ch = -1
+		for ch in range(3):
+			m, symToVal = metadata[ch]
+			ch_start = data.find(ch_tag, ch_start+1)
+			next_ch = data.find(ch_tag, ch_start+1)
+			if next_ch != -1:
+				ch_data_bytes = data[ch_start+ch_len:next_ch]
+			else:
+				ch_data_bytes = data[ch_start+ch_len:]
+
+			# Decode channel data
+			g = ReadGolomb(m,ch_data_bytes)
+			values_sym = g.getValues()
+			#values = [symToVal[v] for v in values_sym] # Original values
+			#overalls.append(values) #TODO uncomment after fixing Golomb (at the moment the number of decoded values is different than the encoded)
+			overalls.append(values_sym)
+
+		print(len(overalls[0]),len(overalls[1]),len(overalls[2]))
 
 if __name__ == "__main__":
 	main()

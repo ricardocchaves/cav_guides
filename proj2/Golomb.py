@@ -79,11 +79,10 @@ class Golomb():
 		return q*m + r
 
 if __name__ == "__main__":
-	m = 8
+	m = 3
 	c = int(math.ceil(math.log(m,2)))
 	div = int(math.pow(2,c) - m)
-	for i in range(20):
+	for i in range(10):
 		g = Golomb.to_golomb(i,m,c,div)
-		print(g)
-		print(Golomb.from_golomb(g,m))
-		print("----")
+		print(g,Golomb.from_golomb(g,m))
+	print()

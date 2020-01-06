@@ -32,9 +32,10 @@ cdef class GolombCython(object):
 	cpdef bytes getBytes(self):
 		cdef bytes b
 		# Padding
-		if self.pointer > 0:
+		if self.pointer != 7:
 			#self._writeNBits(0,self.pointer+1)
-			self._writeNBits(0,7-self.pointer)
+			#self._writeNBits(0xff,7-self.pointer)
+			self._writeNBits(0xff,self.pointer+1)
 
 		b = bytes(self.buffer)
 		self.buffer = []
@@ -88,7 +89,8 @@ cdef class ReadGolomb(object):
 			val = self.readVal()
 			#if self.end == 1:
 				#break
-			values += [val]
+			if self.pointer >= -1:
+				values += [val]
 		return values
 
 	cdef unsigned int readVal(self):
@@ -110,21 +112,18 @@ cdef class ReadGolomb(object):
 		
 		if r >= self.div:
 			r = r - self.div
-		print("Got "+str(self.decode(q,r)))
 		return self.decode(q,r)
 
 	cdef unsigned char readBit(self):
 		cdef unsigned char bit
 		if (self.pointer < 0) and (self.end == 0):
 			self.byte = self.buffer[self.next_read]
-			print(self.byte)
 			self.next_read = self.next_read + 1
 			if(self.next_read >= len(self.buffer)):
 				self.end = 1
 			self.pointer = 7
 		bit = (self.byte >> self.pointer) & 0x01
 		self.pointer = self.pointer - 1
-		print(bit,self.pointer)
 		return bit
 
 	cdef unsigned int readNBits(self,unsigned int n):

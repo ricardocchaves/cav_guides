@@ -1,4 +1,3 @@
-import cv2 as cv
 import numpy as np
 
 # Video Capture Class. Only supports 4:2:0, 4:2:2 and 4:4:4 chroma subsampling formats
@@ -57,6 +56,7 @@ class VideoCaptureYUV:
 		raw = self.f.read(self.frame_len)
 		if len(raw) != self.frame_len:
 			return False, None
+		self.f.read(len(b'FRAME\n')) # Skip bytes saying "FRAME"
 		
 		cnt = self.width*self.height
 		cnt_chroma = self.width_chroma*self.height_chroma

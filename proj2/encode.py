@@ -2,7 +2,6 @@ import wave
 import struct
 import sys
 from tqdm import tqdm
-from bitstring import BitArray
 import math
 
 import numpy as np

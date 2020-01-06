@@ -1,78 +1,44 @@
 # compile this file: python3 setup.py build_ext --inplace
+import numpy as np
+cpdef decodeFrame(unsigned int height, unsigned int width, diffs):
+	ch_pred = np.zeros((height,width))
+	ch_frame = np.zeros((height,width))
+	cdef int pred
+	cdef int x,y
 
-####### Pixel iteration function for intra frame encoding, codec 1
-cpdef pixel_iteration_fast(int height,int width,unsigned char[:,:,:] frame):
-	overalls = ([],[],[])
-	for h in range(height):
-		for w in range(width):
-			y,u,v = frame[h,w]
-			y_p, u_p, v_p = _predictor(frame,h,w)
+	for y in range(height):
+		for x in range(width):
+			pred = decode_predictor(x,y,ch_frame)
+			ch_pred[y,x] = pred
+			ch_frame[y,x] = pred + diffs[y,x]
+	return ch_frame
 
-			diff_y = y - y_p
-			diff_u = u - u_p
-			diff_v = v - v_p
-
-			overalls[0].append(diff_y)
-			overalls[1].append(diff_u)
-			overalls[2].append(diff_v)
-	return overalls
-
-cdef _predictor(unsigned char[:,:,:]frame, int pos_h, int pos_w):
-	cdef int y_p,u_p,v_p
-	if pos_w-1>=0:
-		a = frame[pos_h,pos_w-1]
+cdef int decode_predictor(unsigned int x,unsigned int y, frame):
+	cdef int a,b,c
+	if x>0:
+		a = int(frame[y,x-1])
 	else:
-		a = [0,0,0]
-
-	if pos_h-1>=0:
-		b = frame[pos_h-1,pos_w]
+		a = 0
+	if y>0:
+		b = int(frame[y-1,x])
 	else:
-		b = [0,0,0]
-
-	if pos_h-1>=0 and pos_w-1>=0:
-		c = frame[pos_h-1,pos_w-1]
+		b = 0
+	if y>0 and x>0:
+		c = int(frame[y-1,x-1])
 	else:
-		c = [0,0,0]
+		c = 0
 	
-	y_p = _nonLinearPredictor(a[0],b[0],c[0])
-	u_p = _nonLinearPredictor(a[1],b[1],c[1])
-	v_p = _nonLinearPredictor(a[2],b[2],c[2])
-	return y_p,u_p,v_p
+	return _nonLinearPredictor(a,b,c)
 
-# c | b
-# a | X
-cdef int _nonLinearPredictor(int a, int b, int c):
-	if c >= max(a,b):
-		return min(a,b)
-	elif c <= min(a,b):
-		return max(a,b)
+cdef int _nonLinearPredictor(int a,int b,int c):
+	cdef int maxAB = max(a,b)
+	cdef int minAB = min(a,b)
+	if c >= maxAB:
+		return minAB
+	elif c <= minAB:
+		return maxAB
 	else:
 		return a+b-c
-
-####### GOLOMB
-import math
-from numpy import binary_repr
-#cpdef valsToGolomb(int[:] vals)
-#golomb_result = ""
-#for val in tqdm(vals,desc="Golomb"):
-#	val = valueToSymbol[val]
-#	#golomb_result += toGolomb_fast(val, m, c, div) #15.000/s
-#	golomb_result += Golomb.to_golomb(val, m, c, div) #14.500/s
-cpdef toGolomb(int val, int m, int c, int div):
-	cdef int r,q,b
-
-	r = val % m
-	q =int(math.floor(val / m))
-	unary = "1"*q
-
-	if (r < div):
-		b = c - 1
-		binary = binary_repr(r,width=b)
-	else:
-		b = c
-		binary = binary_repr(r+div,width=b)
-
-	return unary+"0"+binary
 
 ####### Inter frame encoding.
 from sys import maxsize

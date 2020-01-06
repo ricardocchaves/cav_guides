@@ -3,7 +3,6 @@ import math
 import numpy as np
 from tqdm import tqdm
 from multiprocessing import Process, Value, Manager, cpu_count
-from bitstring import BitArray
 import time
 
 from VideoCaptureYUV import VideoCaptureYUV
@@ -16,6 +15,7 @@ import proj2.encode as GolombEst
 from GolombFast import GolombFast
 from golomb_cython import GolombCython
 from golomb_cython import ReadGolomb
+from pixel_iteration import decodeFrame
 
 def main():
 	if(len(sys.argv) <= 3):
@@ -74,6 +74,11 @@ def encode(inputFile, outputFile):
 			currentProcess += 1
 		else:
 			break
+	
+	# In case there are remaining processes outside of a "batch"
+	for p in processes:
+		processes[p].join()
+
 	dumpFrames(shared_dict,output,0)
 
 def processFrame(frame,ID,shared_dict):
@@ -107,7 +112,8 @@ def predictor(frame):
 	f = np.frompyfunc(_nonLinearPredictor_np,5,1)
 	max_ab = np.maximum(a,b)
 	min_ab = np.minimum(a,b)
-	return f(a,b,c,max_ab,min_ab)
+	ret = f(a,b,c,max_ab,min_ab).astype(np.uint8)
+	return ret
 
 def _nonLinearPredictor_np(a,b,c,maxAB,minAB):
 	if c >= maxAB:
@@ -171,7 +177,7 @@ def encodeValues(fhandler,values, sym, m_list):
 	metadata = {}
 	for ch in range(len(sym)):
 		symbolToValue,_ = sym[ch]
-		metadata[ch] = (m_list[ch],symbolToValue)
+		metadata[ch] = (m_list[ch],symbolToValue.copy())
 
 	from pickle import dumps
 	metadata = dumps(metadata) # bytes
@@ -193,12 +199,7 @@ def encodeValues(fhandler,values, sym, m_list):
 		for v in vals:
 			golomb.toGolomb(valueToSymbol[v])
 
-		tmp_f = open('golomb_N_{}_M_{}'.format(len(vals),m), 'wb')
-		golomb_bytes = golomb.getBytes()
-		
-		tmp_f.write(golomb_bytes)
-		tmp_f.close()
-		fhandler.write(golomb_bytes)
+		fhandler.write(golomb.getBytes())
 
 def processChannel(overall,return_m,return_symbolToValue,return_valueToSymbol):
 	#### Find best 'm' for every value in each overall
@@ -222,9 +223,15 @@ def processChannel(overall,return_m,return_symbolToValue,return_valueToSymbol):
 ## Decoding Part
 
 def decode(inputFile, outputFile):
+	fout = open(outputFile, 'wb')
 	src = VideoCaptureYUV(inputFile)
 	src.f.seek(0)
+
+	fout.write(src.header.encode('utf-8'))
+
+	print("Reading raw file to memory... ",end='')
 	data_raw = src.f.read() # Read everything to memory
+	print("Done")
 	isData = True
 	
 	meta_start = -1
@@ -244,6 +251,7 @@ def decode(inputFile, outputFile):
 	
 	while isData:
 		# Estabilishing limits of current "batch"
+		print("#### Setting limits of batch...")
 		meta_start = data_raw.find(meta_tag, meta_start+1)
 		data_start = data_raw.find(data_tag, data_start+1)
 		next_meta = data_raw.find(meta_tag, meta_start+1)
@@ -255,6 +263,7 @@ def decode(inputFile, outputFile):
 			isData = False
 
 		# Extracting metadata
+		print("Extracting metadata...")
 		from pickle import loads
 		metadata_tmp = loads(metadata) # metadata dict only has 3 keys: 0,1,2 - one per channel
 		metadata = {}
@@ -263,10 +272,11 @@ def decode(inputFile, outputFile):
 			del(metadata_tmp[ch])
 
 		# Extracting data
+		print("Extracting data...")
 		overalls = []
 		ch_start = -1
 		next_ch = -1
-		for ch in range(3):
+		for ch in tqdm(range(3),desc='Reading channel vals'):
 			m, symToVal = metadata[ch]
 			ch_start = data.find(ch_tag, ch_start+1)
 			next_ch = data.find(ch_tag, ch_start+1)
@@ -278,11 +288,66 @@ def decode(inputFile, outputFile):
 			# Decode channel data
 			g = ReadGolomb(m,ch_data_bytes)
 			values_sym = g.getValues()
-			#values = [symToVal[v] for v in values_sym] # Original values
-			#overalls.append(values) #TODO uncomment after fixing Golomb (at the moment the number of decoded values is different than the encoded)
-			overalls.append(values_sym)
+			values = [symToVal[v] for v in values_sym] # Original values
+			overalls.append(values)
+		
+		f_w = 1280
+		f_h = 720
+		frameSize = f_w*f_h #TODO generic
+		numberOfFrames = int(len(overalls[0])/frameSize) #TODO generic
+		for frame in tqdm(range(numberOfFrames),desc='Processing batch'):
+			fout.write(b'FRAME\n')
+			mgr = Manager()
+			decoded_bytes = mgr.dict()
+			"""
+			for ch in range(3):
+				ch_diff = np.array(overalls[ch][frame*frameSize:(frame+1)*frameSize]).reshape((f_h,f_w))
+				decoded_data = decodeFrame(f_h,f_w,ch_diff).astype(np.uint8)
+				decoded_data_bytes = decoded_data.flatten().tobytes()
+				#print(decoded_data.shape, len(decoded_data_bytes))
+				fout.write(decoded_data_bytes)
+			"""
+			procs = []
+			for ch in range(3):
+				ch_diff = np.array(overalls[ch][frame*frameSize:(frame+1)*frameSize]).reshape((f_h,f_w))
+				procs.append(Process(target=decodeChannelProcess,args=(f_h,f_w,ch_diff,ch,decoded_bytes)))
+				procs[ch].start()
+			for p in procs:
+				p.join()
+				p.terminate()
+			for ch in range(3):
+				fout.write(decoded_bytes[ch])
 
-		print(len(overalls[0]),len(overalls[1]),len(overalls[2]))
+def decodeChannelProcess(f_h,f_w,ch_diff,ch,return_bytes):
+	decoded_data = decodeFrame(f_h,f_w,ch_diff).astype(np.uint8)
+	decoded_data_bytes = decoded_data.flatten().tobytes()
+	return_bytes[ch] = decoded_data_bytes
+
+def decode_predictor(x,y,frame):
+	if x>0:
+		a = int(frame[y,x-1])
+	else:
+		a = 0
+	if y>0:
+		b = int(frame[y-1,x])
+	else:
+		b = 0
+	if y>0 and x>0:
+		c = int(frame[y-1,x-1])
+	else:
+		c = 0
+	
+	return _nonLinearPredictor(a,b,c)
+
+def _nonLinearPredictor(a,b,c):
+	maxAB = max(a,b)
+	minAB = min(a,b)
+	if c >= maxAB:
+		return minAB
+	elif c <= minAB:
+		return maxAB
+	else:
+		return a+b-c
 
 if __name__ == "__main__":
 	main()

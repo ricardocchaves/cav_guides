@@ -5,27 +5,30 @@ import math
 
 #N = 1*1000*1000
 N = 10
+ms = [4,5,13]
+#ms = [5]
 
-m = 3
-c = int(math.ceil(math.log(m,2)))
-div = int(math.pow(2,c) - m)
-enc = GolombCython(m,c,div)
-print("Starting {} golomb...".format(N))
-s = time.time()
-for i in range(N):
-    enc.toGolomb(i)
-t = time.time()-s
-print("Finished: {:.2f}s. {}/s".format(t,N//t))
-encoded = enc.getBytes()
-print(list(encoded))
+for m in ms:
+    c = int(math.ceil(math.log(m,2)))
+    div = int(math.pow(2,c) - m)
+    enc = GolombCython(m,c,div)
+    print("\nStarting {} golomb, m={}...".format(N,m))
+    s = time.time()
+    for i in range(N):
+        enc.toGolomb(i)
+    t = time.time()-s
+    print("Finished: {:.2f}s. {}/s".format(t,N//t))
+    encoded = enc.getBytes()
+    print(list(encoded))
 
-print("\nDecoding...")
-s = time.time()
-dec = ReadGolomb(m,encoded)
-vals = dec.getValues()
-print(vals)
-t = time.time()-s
-print("Finished: {:.2f}s. {}/s".format(t,N//t))
+    print("Decoding...")
+    s = time.time()
+    dec = ReadGolomb(m,encoded)
+    vals = dec.getValues()
+    #print(len(vals))
+    print(vals)
+    t = time.time()-s
+    print("Finished: {:.2f}s. {}/s".format(t,N//t))
 
 """
 g = GolombFast(2,2,2)

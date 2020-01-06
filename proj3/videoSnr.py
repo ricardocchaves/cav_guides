@@ -16,7 +16,7 @@ def main():
     snrValue = snrAll(file1, file2)
     #snrValue = snrY(file1, file2)
 
-    print(snrValue)
+    print("PSNR: {}".format(snrValue))
 
 def snrY(file1, file2):
     cap1 = VideoCaptureYUV(file1)
@@ -73,7 +73,10 @@ def snrAll(file1, file2):
             break
     mse = total_sum / ( (cap1.width * cap1.height + 2 * cap1.width_chroma * cap1.height_chroma) * numberOfFrames)
 
-    psnr = 10.0*log10((255*255)/mse)
+    if mse != 0:
+        psnr = 10.0*log10((255*255)/mse)
+    else:
+        psnr = 0
     return psnr
 
 if __name__ == "__main__":

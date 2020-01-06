@@ -1,3 +1,5 @@
 tqdm
 numpy
 cython
+scipy
+opencv-python

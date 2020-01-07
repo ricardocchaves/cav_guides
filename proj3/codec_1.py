@@ -86,6 +86,12 @@ def processFrame(frame,ID,shared_dict):
 	y_overall = pixel_iteration_np(frame.getMatrix(0),frame.width,frame.height)
 	u_overall = pixel_iteration_np(frame.getMatrix(1),frame.width_chroma,frame.height_chroma)
 	v_overall = pixel_iteration_np(frame.getMatrix(2),frame.width_chroma,frame.height_chroma)
+	#y_overall = pixel_iteration(frame.getMatrix(0),frame.width,frame.height)
+	#u_overall = pixel_iteration(frame.getMatrix(1),frame.width_chroma,frame.height_chroma)
+	#v_overall = pixel_iteration(frame.getMatrix(2),frame.width_chroma,frame.height_chroma)
+	#print(y_overall[:2])
+	#print(u_overall[:2])
+	#print(v_overall[:2])
 
 	shared_dict[ID] = (y_overall.flatten().tolist(),u_overall.flatten().tolist(),v_overall.flatten().tolist())
 
@@ -112,8 +118,32 @@ def predictor(frame):
 	f = np.frompyfunc(_nonLinearPredictor_np,5,1)
 	max_ab = np.maximum(a,b)
 	min_ab = np.minimum(a,b)
-	ret = f(a,b,c,max_ab,min_ab).astype(np.uint8)
+	ret = f(a,b,c,max_ab,min_ab).astype(int)
 	return ret
+
+def pixel_iteration(frame,width,height):
+	predicted = np.zeros((height,width),dtype=int)
+	for y in range(height):
+		for x in range(width):
+			predicted[y,x] = predictorSlow(x,y,frame)
+	
+	return frame - predicted
+
+def predictorSlow(x,y,frame):
+	if x>0:
+		a = int(frame[y,x-1])
+	else:
+		a = 0
+	if y>0:
+		b = int(frame[y-1,x])
+	else:
+		b = 0
+	if y>0 and x>0:
+		c = int(frame[y-1,x-1])
+	else:
+		c = 0
+	
+	return _nonLinearPredictor(a,b,c)
 
 def _nonLinearPredictor_np(a,b,c,maxAB,minAB):
 	if c >= maxAB:

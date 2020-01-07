@@ -66,6 +66,22 @@ class VideoCaptureYUV:
 		frame = Frame(y,u,v, self.height, self.height_chroma, self.width, self.width_chroma)
 		return True, frame
 
+	# Usable for OpenCV
+	def read(self):
+		raw = self.f.read(self.frame_len)
+		if len(raw) != self.frame_len:
+			return False, None
+		self.f.read(len(b'FRAME\n')) # Skip bytes saying "FRAME"
+		
+		cnt = self.width*self.height
+		cnt_chroma = self.width_chroma*self.height_chroma
+		y = np.frombuffer(raw, dtype=np.uint8, count= cnt)
+		u = np.frombuffer(raw, dtype=np.uint8, count=cnt_chroma, offset=cnt)
+		v = np.frombuffer(raw, dtype=np.uint8, count=cnt_chroma, offset=cnt+cnt_chroma)
+		yuv = np.dstack([y,u,v])[0]
+		yuv = yuv.reshape(self.shape)
+		return True, yuv
+
 	@staticmethod
 	def split_frame(frame):
 		yuv = frame.reshape((frame.shape[0]*frame.shape[1],3))

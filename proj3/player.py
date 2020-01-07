@@ -20,10 +20,10 @@ def main():
 			#for ch in range(3):
 				#print(len(frame))
 			cv.imshow('Frame',frame)
-			if cv.waitKey() & 0xFF == ord('q'):
-				break
-			#if cv.waitKey(int((1/framerate)*1000)) & 0xFF == ord('q'):
+			#if cv.waitKey() & 0xFF == ord('q'):
 				#break
+			if cv.waitKey(int((1/framerate)*1000)) & 0xFF == ord('q'):
+				break
 		else:
 			break
 	print("Length: {:.2f}s".format(time.time()-s))

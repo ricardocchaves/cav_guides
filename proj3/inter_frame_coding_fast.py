@@ -1,18 +1,7 @@
-
-import cv2 as cv
 import sys
-import math
 import numpy as np
-from tqdm import tqdm
-from multiprocessing import Process, Value
-import time
-from pixel_iteration import pixel_iteration_fast
 
 from VideoCaptureYUV import VideoCaptureYUV
-
-import sys
-sys.path.append('..') # Making the other packages in the repository visible.
-
 
 def main():
     inputFile = sys.argv[1]
@@ -44,7 +33,7 @@ def main():
     N = 8 #size of block (N*N) on luma
     offset = 2 #radius of the neighbourhood for reference block search
     
-    motion_vectors_to_encode, residual_diffs = inter_frame_processing(cap.height,cap.width,cap.height_chroma,cap.width_chroma,frame, ref_frame, N, offset)
+    motion_vectors_to_encode, residual_diffs = frame_processing(cap.height,cap.width,cap.height_chroma,cap.width_chroma,frame, ref_frame, N, offset)
 
     #print(motion_vectors_to_encode)
     #motion_vectors_to_encode[x,y] = (vector_x,vector_y) -> tuplo representa MV = (vec_x,vec_y) para um bloco x,y
@@ -62,13 +51,13 @@ def main():
     frame_num = 0
 
         #transform MV
-    mv_aslist = mv_tolist(motion_vectors_to_encode)
+    mv_aslist = mv_tolist(motion_vectors_to_encode,cap.height,cap.width,N)
 
         #transform residuals
     residuals_aslist = residual_diffs_tolist(residual_diffs,cap.height,cap.width,N)
 
         #save both on values to encode data structure
-    values_to_encode[frame_num] = (mv_aslist,residuals_aslist)
+    #values_to_encode[frame_num] = (mv_aslist,residuals_aslist)
     
     #apply golomb and end frame encoding
     #######################################################################################
@@ -77,7 +66,7 @@ def main():
 
     #########1##########
     #read values from golomb
-    mv_aslist,residuals_aslist = values_to_encode[frame_num]
+    #mv_aslist,residuals_aslist = values_to_encode[frame_num]
 
     #########2##########
     #convert MV list back to the usual dictionary of motion_vectors[block_x,block_y]
@@ -91,7 +80,7 @@ def main():
     
     #########3##########
     #retrieve frame using the converted dictionaries
-    decoded_frame = decode_inter_frame2(cap.height,cap.width,cap.height_chroma,cap.width_chroma,ref_frame,N, mv_to_decode, residuals_to_decode)
+    decoded_frame = decode_inter_frame(cap.height,cap.width,cap.height_chroma,cap.width_chroma,ref_frame,N, mv_to_decode, residuals_to_decode)
     
     #END of decoding
     #################################################################################################################################################
@@ -124,8 +113,13 @@ def main():
     print(frame_ch[y,x])
     print("----")
     
-def mv_tolist(motion_vectors):
-    mv_aslist = list(sum(motion_vectors.values(), ()))
+def mv_tolist(motion_vectors, height, width, N):
+    #mv_aslist = list(sum(motion_vectors.values(), ()))
+    mv_aslist = []
+    for cblock_x in range(0,width//N):
+        for cblock_y in range(0,height//N):
+            mv = motion_vectors[cblock_x,cblock_y]
+            mv_aslist+=[mv[0],mv[1]]
     #print(mv_aslist)
     return mv_aslist
 
@@ -135,7 +129,7 @@ def mv_fromlist(motion_vectors, height,width,N):
     y_value = 0
     mv_result = {}
     i = 0
-    for cblock_x in tqdm(range(0,width//N)):
+    for cblock_x in range(0,width//N):
         for cblock_y in range(0,height//N):
             x_value = motion_vectors[i]
             y_value = motion_vectors[i+1]
@@ -144,10 +138,9 @@ def mv_fromlist(motion_vectors, height,width,N):
  
     return mv_result
 
-
 def residual_diffs_tolist(residual_diffs,height,width,N):
     residuals_aslist = []
-    for cblock_x in tqdm(range(0,width//N)):
+    for cblock_x in range(0,width//N):
         for cblock_y in range(0,height//N):
             for channel in range(0,3):
 
@@ -160,7 +153,7 @@ def residual_diffs_tolist(residual_diffs,height,width,N):
 def residuals_fromlist(residuals,height,width,height_chroma,width_chroma,N):
     i = 0
     residuals_result = {}
-    for cblock_x in tqdm(range(0,width//N)):
+    for cblock_x in range(0,width//N):
         for cblock_y in range(0,height//N):
             for channel in range(0,3):
 
@@ -179,60 +172,11 @@ def residuals_fromlist(residuals,height,width,height_chroma,width_chroma,N):
     
     return residuals_result
 
-        
-
-def decode_inter_frame(height,width,ref_frame, N, motion_vectors, residual_diffs):
-
-    frame = np.ndarray(shape=(height,width)) #TODO: change to create new np array
-    
-    for cblock_x in tqdm(range(0,width//N)):
-        for cblock_y in range(0,height//N):
-            
-            block_index = cblock_y + N*cblock_x
-
-            mv_index = block_index*3
-            block_mv_y = motion_vectors[mv_index]
-            block_mv_u = motion_vectors[mv_index+1]
-            block_mv_v = motion_vectors[mv_index+2]
-            block_mv_array = [block_mv_y, block_mv_u, block_mv_v ]
-
-            residual_index = block_index*N*N*3
-            block_residuals = residual_diffs[residual_index:residual_index+N*N*3 ] #residuais para os 3 vetores y,u,v deste bloco
-          
-            #Fill in this block into the frame
-            block_pixel_upper_left_x = cblock_x * N
-            block_pixel_upper_left_y = cblock_y * N
-            
-            #iterate inside the block
-            for x in range(0,N):
-                for y in range(0,N):
-                    
-                    for channel in range(0,3):
-                        #go get reference block
-                        ref_block_x = cblock_x + block_mv_array[channel][0] #mv.x
-                        ref_block_y = cblock_y + block_mv_array[channel][1] #mv.y
-                        #convert block coordinated to pixel coordinates
-                        ref_block_pixel_upper_left_x = ref_block_x * N
-                        ref_block_pixel_upper_left_y = ref_block_y * N
-
-                        #get pixel values from reference bloc and add residuals
-                        #and write to frame (that is being contructed)
-                        for x in range(0,N):
-                            for y in range(0,N):
-                                frame[block_pixel_upper_left_y + y, block_pixel_upper_left_x + x, channel] = \
-                                    ref_frame[ref_block_pixel_upper_left_y + y, ref_block_pixel_upper_left_x + x, channel] \
-                                        + block_residuals[channel*N*N + x*N + y]
-
-    return frame
-
-
-def decode_inter_frame2(height,width,height_chroma,width_chroma,ref_frame, N, motion_vectors, residual_diffs):
-
-    #frame = ref_frame #TODO: change to create new np array
+def decode_inter_frame(height,width,height_chroma,width_chroma,ref_frame, N, motion_vectors, residual_diffs):
     frame = np.ndarray(shape=(height,width,3),dtype=np.uint8)
 
-    for cblock_x in tqdm(range(0,width//N)):
-        for cblock_y in range(0,height//N):
+    for cblock_x in range(width//N):
+        for cblock_y in range(height//N):
             
             #get luma to chroma block size ratio
             chroma_height_ratio = height/height_chroma
@@ -266,10 +210,8 @@ def decode_inter_frame2(height,width,height_chroma,width_chroma,ref_frame, N, mo
             
                     #get residuals for this block (matrix N*N with residuals)
                     block_residuals = residual_diffs[cblock_x,cblock_y,channel]
-                
                     #Compute frame block
-                    frame[block_pixel_upper_left_y:block_pixel_upper_left_y+N, block_pixel_upper_left_x:block_pixel_upper_left_x + N, channel] = \
-                        ref_block + block_residuals
+                    frame[block_pixel_upper_left_y:block_pixel_upper_left_y+N, block_pixel_upper_left_x:block_pixel_upper_left_x + N, channel] = ref_block + block_residuals
                 else:
                     #chroma blocks
                     #get block from ref frame
@@ -279,12 +221,11 @@ def decode_inter_frame2(height,width,height_chroma,width_chroma,ref_frame, N, mo
                     block_residuals = residual_diffs[cblock_x,cblock_y,channel]
                 
                     #Compute frame block
-                    frame[chroma_block_pixel_upper_left_y:chroma_block_pixel_upper_left_y+chroma_block_height, chroma_block_pixel_upper_left_x:chroma_block_pixel_upper_left_x + chroma_block_width, channel] = \
-                        ref_block + block_residuals
+                    frame[chroma_block_pixel_upper_left_y:chroma_block_pixel_upper_left_y+chroma_block_height, chroma_block_pixel_upper_left_x:chroma_block_pixel_upper_left_x + chroma_block_width, channel] = ref_block + block_residuals
 
     return frame                 
 
-def inter_frame_processing(height, width, height_chroma, width_chroma, frame, ref_frame, N, offset):
+def frame_processing(height, width, height_chroma, width_chroma, frame, ref_frame, N, offset):
     if not ((N != 0) and (N & (N-1) == 0)):
         print("N is not power of 2")
         return -1
@@ -292,7 +233,7 @@ def inter_frame_processing(height, width, height_chroma, width_chroma, frame, re
     motion_vectors_to_encode = {}
     residual_diffs = {}
 
-    for cblock_x in tqdm(range(0,width//N)):
+    for cblock_x in range(0,width//N):
         for cblock_y in range(0,height//N):
             #for channel in range(0,3):
             
@@ -369,32 +310,13 @@ def compare_blocks(frame, cbx, cby, ref_frame, bx, by, N, ch):
     
     bx_pixel_upper_left = bx * N
     by_pixel_upper_left = by * N
-    
-    '''
-    overall_diff = 0
-    diffs = []
-    for x in range(0,N):
-        for y in range(0,N):
 
-            pixel_value = int( frame[cby_pixel_upper_left + y, cbx_pixel_upper_left + x, ch] )
-
-            reference_pixel_value = int( ref_frame[by_pixel_upper_left + y, bx_pixel_upper_left + x, ch] ) 
-
-            diff = pixel_value - reference_pixel_value 
-            overall_diff += diff
-            diffs += [diff]
-    '''
     frame_block = frame[cby_pixel_upper_left:cby_pixel_upper_left+N, cbx_pixel_upper_left:cbx_pixel_upper_left + N, ch]
     ref_block = ref_frame[by_pixel_upper_left:by_pixel_upper_left + N, bx_pixel_upper_left:bx_pixel_upper_left + N, ch]
 
     overall_diff = np.absolute( frame_block - ref_block)
 
-    # print(frame_block)
-    # print(ref_block)
-    # print(overall_diff)
-    # input(overall_diff.sum())
     return overall_diff.sum(), ref_block
-
 
 if __name__ == "__main__":
 	main()

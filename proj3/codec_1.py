@@ -19,6 +19,7 @@ from pixel_iteration import decodeFrame
 
 def main():
 	if(len(sys.argv) <= 3):
+		print("Lossless intra-frame encoder.")
 		print("USAGE: python3 {} inputFile outputFile [args]".format(sys.argv[0]))
 		print("Args:")
 		print("    -encode")

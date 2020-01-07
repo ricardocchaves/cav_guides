@@ -32,7 +32,7 @@ def encode(inputVid, encoded):
 	#c.dumpFrames(shared_dict,output,0)
 
 def main():
-	inputVid = "../videos/ducks_take_off_420_720p50.y4m"
+	inputVid = "../videos/ducks_take_off_444_720p50.y4m"
 	encoded = "trash_random_file.bin"
 	outputVid = "trash_random_file.y4m"
 

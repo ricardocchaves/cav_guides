@@ -66,7 +66,7 @@ class VideoCaptureYUV:
 		frame = Frame(y,u,v, self.height, self.height_chroma, self.width, self.width_chroma)
 		return True, frame
 
-	# Usable for OpenCV
+	# Usable for OpenCV, 4:4:4 compatible only
 	def read(self):
 		raw = self.f.read(self.frame_len)
 		if len(raw) != self.frame_len:

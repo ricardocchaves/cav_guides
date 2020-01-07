@@ -321,24 +321,22 @@ def decode(inputFile, outputFile):
 			values = [symToVal[v] for v in values_sym] # Original values
 			overalls.append(values)
 		
-		f_w = 1280
-		f_h = 720
-		frameSize = f_w*f_h #TODO generic
-		numberOfFrames = int(len(overalls[0])/frameSize) #TODO generic
+		frameSize = src.height*src.width
+		numberOfFrames = (len(overalls[0])+len(overalls[1])+len(overalls[2]))//src.frame_len
 		for frame in tqdm(range(numberOfFrames),desc='Processing batch'):
 			fout.write(b'FRAME\n')
 			mgr = Manager()
 			decoded_bytes = mgr.dict()
-			"""
-			for ch in range(3):
-				ch_diff = np.array(overalls[ch][frame*frameSize:(frame+1)*frameSize]).reshape((f_h,f_w))
-				decoded_data = decodeFrame(f_h,f_w,ch_diff).astype(np.uint8)
-				decoded_data_bytes = decoded_data.flatten().tobytes()
-				#print(decoded_data.shape, len(decoded_data_bytes))
-				fout.write(decoded_data_bytes)
-			"""
+
 			procs = []
 			for ch in range(3):
+				if ch == 0:
+					f_h = src.height
+					f_w = src.width
+				else:
+					f_h = src.height_chroma
+					f_w = src.width_chroma
+				frameSize = f_h*f_w
 				ch_diff = np.array(overalls[ch][frame*frameSize:(frame+1)*frameSize]).reshape((f_h,f_w))
 				procs.append(Process(target=decodeChannelProcess,args=(f_h,f_w,ch_diff,ch,decoded_bytes)))
 				procs[ch].start()

@@ -21,30 +21,34 @@ import inter_frame_coding_fast as inter
 
 def main():
 	if(len(sys.argv) <= 3):
-		print("Lossless hybrid encoder (intra+inter coding)")
+		print("Lossy hybrid encoder (intra+inter coding)")
 		print("USAGE: python3 {} inputFile outputFile [args]".format(sys.argv[0]))
 		print("Args:")
 		print("    -encode")
 		print("    -decode")
 		print("	   -n n_value")
 		print("    -off offset")
+		print("	   -q value ")
 		return
 
 	inputFile = sys.argv[1]
 	outFile = sys.argv[2]
 	N = 8
 	offset = 2
+	quantization_steps = 2
 	for arg in sys.argv[3:]:
 		if arg == "-encode":
-			encode(inputFile,outFile,N,offset)
+			encode(inputFile,outFile,N,offset,quantization_steps)
 		elif arg == "-decode":
 			decode(inputFile,outFile)
 		elif '-n' in arg:
 			N = int(arg.split(' ')[1])
 		elif '-off' in arg:
 			offset = int(arg.split(' ')[1])
+		elif '-q' in arg:
+			quantization_steps = 2**int(arg.split(' ')[1])
 
-def encode(inputFile, outputFile, N, offset):
+def encode(inputFile, outputFile, N, offset, quantization_steps):
 	cap = VideoCaptureYUV(inputFile)
 
 	header = cap.header.encode('utf-8')
@@ -62,9 +66,10 @@ def encode(inputFile, outputFile, N, offset):
 	while True:
 		ret, frame = cap.read_raw()
 		if ret:
+			# If ref_frame doesn't exist
 			if not ref_frame:
 				# Start of batch, current frame will be reference
-				frames_dict[cnt] = processFrame(frame)
+				frames_dict[cnt] = processFrame(frame,quantization_steps)
 				ref_frame = frame
 			else:
 				motion_vectors_to_encode, residual_diffs = inter.frame_processing(cap.height,cap.width,cap.height_chroma,cap.width_chroma,frame, ref_frame, N, offset)
@@ -75,7 +80,7 @@ def encode(inputFile, outputFile, N, offset):
 
 				frames_dict[cnt] = (mv_aslist,residuals_aslist)
 			
-			wroteFrames = dumpFrames(frames_dict,output,N=N,offset=offset)
+			wroteFrames = dumpFrames(frames_dict,output,N=N,offset=offset,q=quantization_steps)
 			if wroteFrames:
 				ref_frame = None
 				frames_dict.clear()
@@ -85,19 +90,19 @@ def encode(inputFile, outputFile, N, offset):
 		else:
 			break
 
-	dumpFrames(frames_dict,output,0,N=N,offset=offset)
+	dumpFrames(frames_dict,output,N=N,offset=offset,q=quantization_steps)
 
-def processFrame(frame):
+def processFrame(frame, quantization_steps):
 	# Add y,u,v overall to globalOverall (y,u and v) dict/list in the frame position
 	y_overall = pixel_iteration_np(frame.getMatrix(0),frame.width,frame.height)
 	u_overall = pixel_iteration_np(frame.getMatrix(1),frame.width_chroma,frame.height_chroma)
 	v_overall = pixel_iteration_np(frame.getMatrix(2),frame.width_chroma,frame.height_chroma)
-	#y_overall = pixel_iteration(frame.getMatrix(0),frame.width,frame.height)
-	#u_overall = pixel_iteration(frame.getMatrix(1),frame.width_chroma,frame.height_chroma)
-	#v_overall = pixel_iteration(frame.getMatrix(2),frame.width_chroma,frame.height_chroma)
-	#print(y_overall[:2])
-	#print(u_overall[:2])
-	#print(v_overall[:2])
+
+	# Quantization
+	S = math.ceil(256/quantization_steps)
+	y_overall = y_overall//S
+	u_overall = u_overall//S
+	v_overall = v_overall//S
 
 	return (y_overall.flatten().tolist(),u_overall.flatten().tolist(),v_overall.flatten().tolist())
 
@@ -159,7 +164,7 @@ def _nonLinearPredictor_np(a,b,c,maxAB,minAB):
 	else:
 		return a+b-c
 
-def dumpFrames(shared_dict, handler, threshold = 50, N=8, offset=2):
+def dumpFrames(shared_dict, handler, threshold = 50, N=8, offset=2, q=0):
 	if len(shared_dict)<threshold:
 		return False
 
@@ -171,12 +176,34 @@ def dumpFrames(shared_dict, handler, threshold = 50, N=8, offset=2):
 
 			y,u,v = shared_dict[frame]
 			values = (y,u,v)
-			m,symbolToValue,valueToSymbol = processChannel(y,u,v)
+			sym_list = []
+			m_list = []
+
+			m,symbolToValue,valueToSymbol = processChannel(y)
 			s = {}
 			for k in symbolToValue.keys():
 				s.update({k:symbolToValue[k][0]})
 			sym = (s,valueToSymbol)
-			encodeValues(handler, values, sym, m)
+			sym_list.append(sym)
+			m_list.append(m)
+
+			m,symbolToValue,valueToSymbol = processChannel(u)
+			s = {}
+			for k in symbolToValue.keys():
+				s.update({k:symbolToValue[k][0]})
+			sym = (s,valueToSymbol)
+			sym_list.append(sym)
+			m_list.append(m)
+
+			m,symbolToValue,valueToSymbol = processChannel(v)
+			s = {}
+			for k in symbolToValue.keys():
+				s.update({k:symbolToValue[k][0]})
+			sym = (s,valueToSymbol)
+			sym_list.append(sym)
+			m_list.append(m)
+
+			encodeValues(handler, values, sym_list, m_list,q)
 		else:
 			mv_aslist,residuals_aslist = shared_dict[frame]
 			values = mv_aslist,residuals_aslist
@@ -187,16 +214,18 @@ def dumpFrames(shared_dict, handler, threshold = 50, N=8, offset=2):
 			# Removing probabilities from symbolToValue map. valueToSymbol already doesn't have them.
 			for k in symbolToValue.keys():
 				s.update({k:symbolToValue[k][0]})
+			#encode interencoded frame
 			encodeRefFrame(handler, values, s, m, valueToSymbol,N,offset)
 
 	return True
 
-def encodeValues(fhandler,values, sym, m):
+def encodeValues(fhandler,values, sym, m_list,q):
 	# Writing metadata
 	fhandler.write(b"\nMETA\n")
 	metadata = {}
-	symbolToValue, valueToSymbol = sym
-	metadata[ch] = (m,symbolToValue)
+	for ch in range(len(sym)):
+		symbolToValue,_ = sym[ch]
+		metadata[ch] = (m_list[ch],symbolToValue,q)
 
 	from pickle import dumps
 	metadata = dumps(metadata) # bytes
@@ -209,6 +238,7 @@ def encodeValues(fhandler,values, sym, m):
 		_,valueToSymbol_old = sym[ch]
 		valueToSymbol = valueToSymbol_old.copy()
 		vals = values[ch]
+		m = int(m_list[ch])
 		c = int(math.ceil(math.log(m,2)))
 		div = int(math.pow(2,c) - m)
 		#golomb_result = ""
@@ -229,7 +259,7 @@ def encodeRefFrame(fhandler,values, sym, m, valueToSymbol,N,offset):
 	metadata['m'] = m
 	metadata['symbolToValue'] = sym
 	metadata['N'] = N
-	metatata['offset'] = offset
+	metadata['offset'] = offset
 
 	from pickle import dumps
 	metadata = dumps(metadata) # bytes
@@ -262,10 +292,13 @@ def processRefFrame(motion_vectors,residuals):
 
 	return m,symbolToValue,valueToSymbol
 
-def processChannel(y,u,v):
+def processChannel(y,u=None,v=None):
 	#### Find best 'm' for every value in each overall
 	# Calculate probabilty of each sample value after predictor is applied
-	overall = y+u+v
+	if u==None and v==None:
+		overall = y
+	else:
+		overall = y+u+v
 	sample_probability = GolombEst.prob(overall)
 
 	# Map symbols to sample values according to probability
@@ -373,7 +406,8 @@ def decode(inputFile, outputFile):
 			ch_start = -1
 			next_ch = -1
 			for ch in tqdm(range(3),desc='Reading channel vals'):
-				m, symToVal = metadata[ch]
+				m, symToVal,N = metadata[ch]
+				S = math.ceil(256/N)
 				ch_start = data.find(ch_tag, ch_start+1)
 				next_ch = data.find(ch_tag, ch_start+1)
 				if next_ch != -1:
@@ -384,7 +418,7 @@ def decode(inputFile, outputFile):
 				# Decode channel data
 				g = ReadGolomb(m,ch_data_bytes)
 				values_sym = g.getValues()
-				values = [symToVal[v] for v in values_sym] # Original values
+				values = [symToVal[v]*S for v in values_sym] # Original values
 				overalls.append(values)
 			
 			frameSize = src.height*src.width

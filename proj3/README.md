@@ -16,7 +16,15 @@ ex: python3 codec_1.py ducks_444_encoded.bin ducks_444.y4m -decode
 
 # Running codec_2 (lossless hybrid)
 ## Encoding
-ex: python3 codec_2.py ../videos/ducks_take_off_444_720p50.y4m ducks_444_encoded.bin -encode
+ex: python3 codec_2.py ../videos/ducks_take_off_444_720p50.y4m ducks_444_encoded.bin -encode -n 8 -off 2
 
 ## Decoding
 ex: python3 codec_2.py ducks_444_encoded.bin ducks_444.y4m -decode
+
+# Running codec_3 (lossy hybrid)
+## Encoding
+ex: python3 codec_3.py ../videos/ducks_take_off_444_720p50.y4m ducks_444_encoded.bin -encode -n 8 -off 2 -q 2
+
+## Decoding
+ex: python3 codec_3.py ducks_444_encoded.bin ducks_444.y4m -decode
+
